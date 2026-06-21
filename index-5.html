@@ -1,0 +1,2568 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TB. BANGUN GRIYA - Inventory System</title>
+
+<!-- ============================================================
+     EXTERNAL LIBRARIES
+     - Firebase SDK (Auth + Firestore) via CDN, compat version
+       supaya mudah dipakai dengan Vanilla JS tanpa bundler.
+     - Chart.js untuk grafik dashboard.
+     - jsPDF + autotable untuk export PDF.
+     - SheetJS (xlsx) untuk export Excel.
+============================================================= -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+/* =================================================================
+   ROOT VARIABLES & RESET
+================================================================== */
+:root{
+  --navy:#1E3A8A;
+  --navy-dark:#16306e;
+  --navy-light:#274bb0;
+  --orange:#F97316;
+  --orange-dark:#d96310;
+  --white:#FFFFFF;
+  --bg:#F3F4F6;
+  --gray-100:#F9FAFB;
+  --gray-200:#E5E7EB;
+  --gray-300:#D1D5DB;
+  --gray-500:#6B7280;
+  --gray-700:#374151;
+  --gray-900:#111827;
+  --danger:#DC2626;
+  --danger-bg:#FEE2E2;
+  --success:#16A34A;
+  --success-bg:#DCFCE7;
+  --warning:#D97706;
+  --warning-bg:#FEF3C7;
+  --radius:12px;
+  --shadow:0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg:0 10px 25px rgba(0,0,0,0.12);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--gray-900);
+  font-size:14px;
+}
+a{text-decoration:none;color:inherit;}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:4px;}
+
+.hidden{display:none !important;}
+
+/* =================================================================
+   LOGIN PAGE
+================================================================== */
+#loginPage{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg,var(--navy) 0%, var(--navy-dark) 60%, #0f1f4d 100%);
+  padding:20px;
+}
+.login-card{
+  background:var(--white);
+  width:100%;
+  max-width:380px;
+  border-radius:16px;
+  padding:36px 32px;
+  box-shadow:var(--shadow-lg);
+  text-align:center;
+}
+.login-logo{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  margin-bottom:8px;
+}
+.login-logo .icon-badge{
+  width:56px;height:56px;border-radius:14px;
+  background:linear-gradient(135deg,var(--orange),var(--orange-dark));
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;
+  color:#fff;
+  box-shadow:0 4px 12px rgba(249,115,22,0.35);
+}
+.login-logo h1{
+  font-size:18px;color:var(--navy);margin:6px 0 0;letter-spacing:0.5px;
+}
+.login-logo span{
+  font-size:11px;color:var(--gray-500);letter-spacing:1.5px;font-weight:600;
+}
+.login-card form{margin-top:24px;text-align:left;}
+.field-group{margin-bottom:16px;}
+.field-group label{
+  display:block;font-size:12.5px;font-weight:600;color:var(--gray-700);margin-bottom:6px;
+}
+.field-group input, .field-group select, .field-group textarea{
+  width:100%;padding:11px 14px;border:1.5px solid var(--gray-200);
+  border-radius:10px;font-size:14px;outline:none;transition:0.15s;background:var(--gray-100);
+}
+.field-group input:focus, .field-group select:focus, .field-group textarea:focus{
+  border-color:var(--navy);background:#fff;
+}
+.password-wrap{position:relative;}
+.password-wrap button{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  background:none;border:none;color:var(--gray-500);font-size:13px;
+}
+.btn-primary{
+  width:100%;padding:12px;border:none;border-radius:10px;
+  background:var(--orange);color:#fff;font-weight:700;font-size:15px;
+  transition:0.15s; box-shadow:0 4px 10px rgba(249,115,22,0.3);
+}
+.btn-primary:hover{background:var(--orange-dark);}
+.btn-primary:disabled{opacity:0.6;cursor:not-allowed;}
+.login-footer{margin-top:18px;font-size:12.5px;color:var(--gray-500);}
+.login-error{
+  background:var(--danger-bg);color:var(--danger);font-size:12.5px;
+  padding:9px 12px;border-radius:8px;margin-bottom:14px;text-align:left;display:none;
+}
+
+/* =================================================================
+   APP LAYOUT
+================================================================== */
+#appShell{display:none;min-height:100vh;}
+#appShell.active{display:flex;}
+
+.sidebar{
+  width:250px;flex-shrink:0;
+  background:linear-gradient(180deg,var(--navy) 0%, var(--navy-dark) 100%);
+  color:#fff;display:flex;flex-direction:column;
+  position:fixed;top:0;left:0;height:100vh;z-index:40;
+  transition:transform 0.25s ease;
+}
+.sidebar-brand{
+  display:flex;align-items:center;gap:10px;padding:20px 18px;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.sidebar-brand .icon-badge{
+  width:38px;height:38px;border-radius:10px;
+  background:linear-gradient(135deg,var(--orange),var(--orange-dark));
+  display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;
+}
+.sidebar-brand .brand-text strong{display:block;font-size:13.5px;letter-spacing:0.4px;}
+.sidebar-brand .brand-text span{display:block;font-size:9.5px;color:#A5B4E0;letter-spacing:1px;}
+
+.sidebar-menu-label{
+  font-size:10.5px;color:#7E92CC;letter-spacing:1.5px;font-weight:700;
+  padding:18px 20px 6px;
+}
+.sidebar-nav{flex:1;overflow-y:auto;padding-bottom:10px;}
+.nav-item{
+  display:flex;align-items:center;gap:12px;padding:11px 20px;
+  color:#D6DEF5;font-size:13.5px;font-weight:500;cursor:pointer;
+  border-left:3px solid transparent; transition:0.15s;
+}
+.nav-item .nav-icon{width:18px;text-align:center;font-size:15px;}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.nav-item.active{
+  background:rgba(249,115,22,0.15);border-left-color:var(--orange);color:#fff;
+}
+.sidebar-user{
+  padding:14px 18px;border-top:1px solid rgba(255,255,255,0.08);
+  display:flex;align-items:center;gap:10px;
+}
+.avatar-circle{
+  width:36px;height:36px;border-radius:50%;
+  background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:14px;flex-shrink:0;
+}
+.sidebar-user .u-info{flex:1;overflow:hidden;}
+.sidebar-user .u-info strong{display:block;font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sidebar-user .u-info span{display:block;font-size:10.5px;color:#A5B4E0;text-transform:capitalize;}
+.logout-btn{
+  background:none;border:none;color:#F0A98A;font-size:16px;flex-shrink:0;
+}
+
+.main-content{flex:1;margin-left:250px;min-height:100vh;display:flex;flex-direction:column;}
+
+.topbar{
+  background:#fff;border-bottom:1px solid var(--gray-200);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 24px;position:sticky;top:0;z-index:30;
+}
+.topbar-left{display:flex;align-items:center;gap:14px;flex:1;}
+.hamburger-btn{
+  display:none;background:none;border:none;font-size:20px;color:var(--gray-700);
+}
+.topbar-search{
+  display:flex;align-items:center;gap:8px;background:var(--gray-100);
+  border-radius:10px;padding:9px 14px;max-width:380px;flex:1;border:1px solid var(--gray-200);
+}
+.topbar-search input{border:none;background:none;outline:none;flex:1;font-size:13.5px;}
+.topbar-right{display:flex;align-items:center;gap:16px;}
+.bell-wrap{position:relative;font-size:18px;color:var(--gray-700);cursor:pointer;}
+.bell-badge{
+  position:absolute;top:-6px;right:-7px;background:var(--danger);color:#fff;
+  font-size:10px;font-weight:700;border-radius:9px;padding:1px 5px;min-width:16px;text-align:center;
+}
+.topbar-user{display:flex;align-items:center;gap:8px;}
+.topbar-user .u-meta strong{display:block;font-size:13px;}
+.topbar-user .u-meta span{display:block;font-size:10.5px;color:var(--gray-500);text-transform:capitalize;}
+
+.page-container{padding:22px 26px 40px;flex:1;}
+.page-header{
+  display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;
+}
+.page-header h2{font-size:23px;margin:0 0 4px;color:var(--navy);}
+.page-header p{margin:0;color:var(--gray-500);font-size:13px;}
+.page-date-pill{
+  background:#fff;border:1px solid var(--gray-200);border-radius:10px;
+  padding:9px 16px;font-size:12.5px;color:var(--gray-700);display:flex;align-items:center;gap:8px;
+  box-shadow:var(--shadow);
+}
+
+/* =================================================================
+   CARDS / WIDGETS
+================================================================== */
+.stat-grid{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:22px;
+}
+@media(max-width:1200px){.stat-grid{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:760px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
+.stat-card{
+  background:#fff;border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:10px;border:1px solid var(--gray-200);
+}
+.stat-card .stat-icon{
+  width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:19px;
+}
+.stat-card .stat-value{font-size:24px;font-weight:800;color:var(--gray-900);line-height:1.1;}
+.stat-card .stat-label{font-size:12px;color:var(--gray-500);}
+.stat-card .stat-link{font-size:12px;font-weight:600;color:var(--navy);margin-top:auto;}
+
+.card{
+  background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--gray-200);
+}
+.card-header{
+  display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--gray-200);
+}
+.card-header h3{margin:0;font-size:15px;color:var(--gray-900);}
+.card-link{font-size:12.5px;color:var(--navy);font-weight:600;}
+.card-body{padding:18px 20px;}
+
+.dashboard-grid{display:grid;grid-template-columns:2fr 1.1fr;gap:18px;margin-bottom:18px;}
+@media(max-width:1100px){.dashboard-grid{grid-template-columns:1fr;}}
+.dashboard-bottom-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;}
+@media(max-width:1100px){.dashboard-bottom-grid{grid-template-columns:1fr;}}
+
+.low-stock-item{
+  display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray-100);
+}
+.low-stock-item:last-child{border-bottom:none;}
+.low-stock-thumb{
+  width:40px;height:40px;border-radius:8px;background:var(--gray-100);
+  display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--gray-500);flex-shrink:0;
+}
+.low-stock-info{flex:1;}
+.low-stock-info strong{display:block;font-size:13px;}
+.low-stock-info span{font-size:11.5px;color:var(--gray-500);}
+.low-stock-min{font-size:11.5px;color:var(--danger);font-weight:700;text-align:right;white-space:nowrap;}
+
+.top-list-item{
+  display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;border-bottom:1px solid var(--gray-100);
+}
+.top-list-item:last-child{border-bottom:none;}
+.top-list-rank{
+  width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.top-list-item .tl-name{flex:1;}
+.top-list-item .tl-val{font-weight:700;color:var(--gray-900);}
+
+.activity-table{width:100%;border-collapse:collapse;font-size:12.8px;}
+.activity-table th{text-align:left;color:var(--gray-500);font-weight:600;padding:6px 10px;border-bottom:1px solid var(--gray-200);}
+.activity-table td{padding:9px 10px;border-bottom:1px solid var(--gray-100);color:var(--gray-700);}
+
+/* =================================================================
+   GENERIC TOOLBAR / BUTTONS
+================================================================== */
+.toolbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;justify-content:space-between;
+}
+.toolbar-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;}
+.toolbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.search-input{
+  display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--gray-200);
+  border-radius:9px;padding:9px 13px;min-width:220px;
+}
+.search-input input{border:none;outline:none;background:none;flex:1;font-size:13px;}
+.select-filter{
+  padding:9px 12px;border:1px solid var(--gray-200);border-radius:9px;background:#fff;font-size:13px;color:var(--gray-700);
+}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:9px;border:none;
+  font-size:13px;font-weight:600;transition:0.15s;white-space:nowrap;
+}
+.btn-orange{background:var(--orange);color:#fff;box-shadow:0 3px 8px rgba(249,115,22,0.3);}
+.btn-orange:hover{background:var(--orange-dark);}
+.btn-navy{background:var(--navy);color:#fff;}
+.btn-navy:hover{background:var(--navy-dark);}
+.btn-outline{background:#fff;color:var(--gray-700);border:1px solid var(--gray-300);}
+.btn-outline:hover{background:var(--gray-100);}
+.btn-danger{background:var(--danger);color:#fff;}
+.btn-danger:hover{background:#b91c1c;}
+.btn-success{background:var(--success);color:#fff;}
+.btn-success:hover{background:#15803d;}
+.btn-sm{padding:6px 11px;font-size:12px;border-radius:7px;}
+.btn-icon{padding:8px 10px;}
+.btn:disabled{opacity:0.55;cursor:not-allowed;}
+
+/* =================================================================
+   TABLE
+================================================================== */
+.table-wrap{overflow-x:auto;}
+table.data-table{width:100%;border-collapse:collapse;min-width:640px;}
+table.data-table th{
+  text-align:left;font-size:12px;color:var(--gray-500);font-weight:700;text-transform:uppercase;
+  letter-spacing:0.3px;padding:11px 14px;background:var(--gray-100);white-space:nowrap;
+}
+table.data-table td{
+  padding:12px 14px;font-size:13px;border-bottom:1px solid var(--gray-100);color:var(--gray-700);white-space:nowrap;
+}
+table.data-table tbody tr:hover{background:var(--gray-100);}
+.badge{
+  display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:700;
+}
+.badge-success{background:var(--success-bg);color:var(--success);}
+.badge-danger{background:var(--danger-bg);color:var(--danger);}
+.badge-warning{background:var(--warning-bg);color:var(--warning);}
+.badge-navy{background:#DBEAFE;color:var(--navy);}
+.row-actions{display:flex;gap:6px;}
+.icon-btn{
+  width:30px;height:30px;border-radius:7px;border:1px solid var(--gray-200);background:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--gray-700);
+}
+.icon-btn:hover{background:var(--gray-100);}
+.icon-btn.danger{color:var(--danger);border-color:#FCA5A5;}
+.icon-btn.danger:hover{background:var(--danger-bg);}
+
+.pagination-bar{
+  display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-top:1px solid var(--gray-200);
+  flex-wrap:wrap;gap:10px;
+}
+.pagination-bar span{font-size:12.5px;color:var(--gray-500);}
+.pagination-controls{display:flex;gap:6px;}
+.page-btn{
+  width:32px;height:32px;border-radius:7px;border:1px solid var(--gray-200);background:#fff;font-size:12.5px;
+  display:flex;align-items:center;justify-content:center;color:var(--gray-700);
+}
+.page-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.page-btn:disabled{opacity:0.4;}
+
+.empty-state{
+  text-align:center;padding:50px 20px;color:var(--gray-500);
+}
+.empty-state .ei{font-size:36px;margin-bottom:10px;}
+
+/* =================================================================
+   MODAL
+================================================================== */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(17,24,39,0.55);z-index:100;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.active{display:flex;}
+.modal-box{
+  background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;
+  box-shadow:var(--shadow-lg);
+}
+.modal-box.modal-lg{max-width:640px;}
+.modal-head{
+  display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--gray-200);
+}
+.modal-head h3{margin:0;font-size:16px;color:var(--navy);}
+.modal-close{background:none;border:none;font-size:18px;color:var(--gray-500);}
+.modal-body{padding:20px 22px;}
+.modal-foot{
+  display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--gray-200);
+}
+.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:520px){.form-grid-2{grid-template-columns:1fr;}}
+.field-hint{font-size:11px;color:var(--gray-500);margin-top:4px;}
+
+/* =================================================================
+   TOAST
+================================================================== */
+#toastHost{position:fixed;top:18px;right:18px;z-index:200;display:flex;flex-direction:column;gap:10px;}
+.toast{
+  background:#1F2937;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;
+  box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;min-width:220px;
+  animation:slideIn 0.25s ease;
+}
+.toast.success{background:#15803d;}
+.toast.error{background:#b91c1c;}
+.toast.warn{background:#b45309;}
+@keyframes slideIn{from{transform:translateX(40px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+
+/* =================================================================
+   MISC: charts row, settings, role badges
+================================================================== */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+@media(max-width:1000px){.charts-row{grid-template-columns:1fr;}}
+.role-pill{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;}
+.role-owner{background:#FEF3C7;color:#92400E;}
+.role-admin{background:#DBEAFE;color:#1E40AF;}
+.role-kasir{background:#DCFCE7;color:#166534;}
+
+.settings-tabs{display:flex;gap:8px;margin-bottom:18px;border-bottom:1px solid var(--gray-200);flex-wrap:wrap;}
+.settings-tab{
+  padding:10px 16px;font-size:13px;font-weight:600;color:var(--gray-500);border-bottom:2px solid transparent;cursor:pointer;
+}
+.settings-tab.active{color:var(--navy);border-color:var(--orange);}
+.settings-panel{display:none;}
+.settings-panel.active{display:block;}
+
+.backup-history-item{
+  display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--gray-100);
+}
+.backup-history-item:last-child{border-bottom:none;}
+.backup-history-item .bh-meta strong{display:block;font-size:13px;}
+.backup-history-item .bh-meta span{font-size:11.5px;color:var(--gray-500);}
+
+.mobile-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:35;
+}
+.mobile-backdrop.active{display:block;}
+
+.access-denied{
+  text-align:center;padding:80px 20px;color:var(--gray-500);
+}
+.access-denied .ei{font-size:46px;margin-bottom:14px;color:var(--danger);}
+
+.loader-overlay{
+  position:fixed;inset:0;background:rgba(255,255,255,0.85);z-index:300;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;
+}
+.spinner{
+  width:38px;height:38px;border:4px solid var(--gray-200);border-top-color:var(--orange);
+  border-radius:50%;animation:spin 0.8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* =================================================================
+   RESPONSIVE: SIDEBAR COLLAPSE
+================================================================== */
+@media(max-width:920px){
+  .sidebar{transform:translateX(-100%);}
+  .sidebar.open{transform:translateX(0);}
+  .main-content{margin-left:0;}
+  .hamburger-btn{display:block;}
+  .topbar-search{display:none;}
+  .stat-grid{grid-template-columns:repeat(2,1fr);}
+}
+@media(max-width:560px){
+  .page-container{padding:16px 14px 30px;}
+  .form-grid-2{grid-template-columns:1fr;}
+  .modal-box{max-width:100%;}
+}
+</style>
+</head>
+<body>
+
+<!-- =====================================================================
+     LOADER (shown while checking auth state)
+====================================================================== -->
+<div class="loader-overlay" id="globalLoader">
+  <div class="spinner"></div>
+  <div style="color:#374151;font-size:13px;">Memuat TB. Bangun Griya...</div>
+</div>
+
+<!-- =====================================================================
+     LOGIN PAGE
+====================================================================== -->
+<div id="loginPage" class="hidden">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon-badge">🏠</div>
+      <h1>TB. BANGUN GRIYA</h1>
+      <span>INVENTORY SYSTEM</span>
+    </div>
+    <form id="loginForm">
+      <div class="login-error" id="loginError"></div>
+      <div class="field-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="email@bangungriya.com" required autocomplete="username">
+      </div>
+      <div class="field-group">
+        <label>Password</label>
+        <div class="password-wrap">
+          <input type="password" id="loginPassword" placeholder="Masukkan password" required autocomplete="current-password">
+          <button type="button" id="togglePassword">Lihat</button>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary" id="loginSubmitBtn">Login</button>
+    </form>
+    <div class="login-footer">Belum punya akun? Hubungi Owner toko.</div>
+  </div>
+</div>
+
+<!-- =====================================================================
+     APP SHELL
+====================================================================== -->
+<div id="appShell">
+  <div class="mobile-backdrop" id="mobileBackdrop"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="icon-badge">🏠</div>
+      <div class="brand-text">
+        <strong>TB. BANGUN GRIYA</strong>
+        <span>INVENTORY SYSTEM</span>
+      </div>
+    </div>
+    <div class="sidebar-menu-label">MENU UTAMA</div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <!-- Nav items injected dynamically by JS based on role -->
+    </nav>
+    <div class="sidebar-user">
+      <div class="avatar-circle" id="sideAvatar">O</div>
+      <div class="u-info">
+        <strong id="sideUserName">-</strong>
+        <span id="sideUserRole">-</span>
+      </div>
+      <button class="logout-btn" id="logoutBtn" title="Logout">⎋</button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger-btn" id="hamburgerBtn">☰</button>
+        <div class="topbar-search">
+          <span>🔍</span>
+          <input type="text" id="globalSearch" placeholder="Cari barang, kategori, transaksi...">
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="bell-wrap" id="bellIcon">
+          🔔
+          <span class="bell-badge hidden" id="bellBadge">0</span>
+        </div>
+        <div class="topbar-user">
+          <div class="avatar-circle" id="topAvatar">O</div>
+          <div class="u-meta">
+            <strong id="topUserName">-</strong>
+            <span id="topUserRole">-</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-container" id="pageContainer">
+      <!-- Pages injected here by router -->
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================================
+     MODAL HOST (generic, content injected per action)
+====================================================================== -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box" id="modalBox">
+    <div class="modal-head">
+      <h3 id="modalTitle">Judul</h3>
+      <button class="modal-close" id="modalCloseBtn">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div id="toastHost"></div>
+
+<script>
+/* =====================================================================
+   FIREBASE CONFIGURATION
+   ---------------------------------------------------------------------
+   ISI KONFIGURASI FIREBASE ANDA DI BAWAH INI.
+   Cara mendapatkan nilai ini:
+   1. Buka https://console.firebase.google.com
+   2. Pilih / buat project Anda (misal: "tb-bangun-griya")
+   3. Klik ikon gear (Project Settings) > scroll ke "Your apps"
+   4. Pilih Web App (</>) lalu copy objek firebaseConfig yang muncul
+   5. Tempel nilai-nilainya ke object di bawah ini.
+
+   SETELAH MENGISI CONFIG, LANGKAH SETUP AWAL (WAJIB, SEKALI SAJA):
+   A. Di Firebase Console > Authentication > Sign-in method, aktifkan
+      provider "Email/Password".
+   B. Di Authentication > Users, klik "Add user" untuk membuat akun
+      Owner pertama (contoh: owner@bangungriya.com + password).
+      Catat UID yang dihasilkan.
+   C. Di Firestore Database, buat collection bernama "users" lalu buat
+      1 dokumen dengan Document ID = UID dari langkah B, isi field:
+        name      : "Owner"            (string)
+        email     : "owner@bangungriya.com"  (string)
+        role      : "owner"            (string)
+        createdAt : (gunakan timestamp sekarang)
+      Setelah ini, akun tersebut otomatis punya akses penuh saat login.
+   D. Untuk menambah Admin/Kasir selanjutnya, gunakan menu
+      "Pengguna" di dalam aplikasi (oleh Owner) — aplikasi akan
+      membuatkan akun Auth + dokumen Firestore secara otomatis.
+====================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDNBh1WC7mCH5r9rsnKvhrGo2ErNr9IBcs",
+  authDomain: "bangungriya.firebaseapp.com",
+  projectId: "bangungriya",
+  storageBucket: "bangungriya.firebasestorage.app",
+  messagingSenderId: "975099430201",
+  appId: "1:975099430201:web:ff0120c2e11887db5194e8"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const FieldValue = firebase.firestore.FieldValue;
+const Timestamp = firebase.firestore.Timestamp;
+
+/* =====================================================================
+   GLOBAL STATE
+====================================================================== */
+const STATE = {
+  currentUser: null,      // firebase auth user object
+  profile: null,          // { name, email, role, uid }
+  categories: [],
+  products: [],
+  stockIn: [],
+  stockOut: [],
+  users: [],
+  backups: [],
+  activityLogs: [],
+  currentPage: 'dashboard',
+  pagination: {
+    products: 1, categories: 1, stockIn: 1, stockOut: 1, users: 1, backups: 1, logs: 1
+  },
+  pageSize: 8,
+  searchTerms: { products: '', categories: '', stockIn: '', stockOut: '', users: '' },
+  filters: { productsCategory: '' },
+  charts: {}
+};
+
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', kasir: 'Kasir' };
+
+/* =====================================================================
+   UTILITIES
+====================================================================== */
+function formatRupiah(num){
+  num = Number(num) || 0;
+  return 'Rp ' + num.toLocaleString('id-ID');
+}
+function formatDate(d){
+  if(!d) return '-';
+  let dateObj = d;
+  if(d && typeof d.toDate === 'function') dateObj = d.toDate();
+  else if(typeof d === 'string') dateObj = new Date(d);
+  if(!(dateObj instanceof Date) || isNaN(dateObj)) return '-';
+  return dateObj.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
+}
+function formatDateTime(d){
+  if(!d) return '-';
+  let dateObj = d;
+  if(d && typeof d.toDate === 'function') dateObj = d.toDate();
+  else if(typeof d === 'string') dateObj = new Date(d);
+  if(!(dateObj instanceof Date) || isNaN(dateObj)) return '-';
+  return dateObj.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) + ' ' +
+         dateObj.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+}
+function todayLabel(){
+  const d = new Date();
+  return d.toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' }) + ', ' +
+         d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+}
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function showToast(message, type='success'){
+  const host = document.getElementById('toastHost');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  const icon = type === 'success' ? '✅' : type === 'error' ? '⛔' : '⚠️';
+  el.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+  host.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(), 300); }, 3200);
+}
+function setLoading(isLoading){
+  document.getElementById('globalLoader').style.display = isLoading ? 'flex' : 'none';
+}
+function genProductCode(categoryName){
+  const prefix = (categoryName || 'BRG').replace(/[^a-zA-Z]/g,'').toUpperCase().slice(0,3) || 'BRG';
+  const rand = Math.floor(100 + Math.random()*900);
+  const stamp = Date.now().toString().slice(-4);
+  return `${prefix}${stamp}${rand}`;
+}
+
+/* =====================================================================
+   ROLE-BASED PERMISSIONS
+====================================================================== */
+const PERMISSIONS = {
+  owner:  { dashboard:true, categories:['view','add','edit','delete'], products:['view','add','edit','delete'],
+            stockIn:['view','add','edit','delete'], stockOut:['view','add','edit','delete'],
+            reports:true, users:['view','add','edit','delete'], backup:['view','manual','restore'], settings:true, auditLog:true },
+  admin:  { dashboard:true, categories:['view','add','edit','delete'], products:['view','add','edit','delete'],
+            stockIn:['view','add','edit','delete'], stockOut:['view','add','edit','delete'],
+            reports:true, users:[], backup:[], settings:true, auditLog:false },
+  kasir:  { dashboard:true, categories:['view'], products:['view'],
+            stockIn:['view'], stockOut:['view','add'],
+            reports:false, users:[], backup:[], settings:false, auditLog:false }
+};
+function can(area, action){
+  if(!STATE.profile) return false;
+  const perms = PERMISSIONS[STATE.profile.role];
+  if(!perms) return false;
+  if(area === 'dashboard' || area === 'reports' || area === 'settings' || area === 'auditLog') return !!perms[area];
+  const list = perms[area] || [];
+  return list.includes(action);
+}
+
+/* =====================================================================
+   AUDIT LOG
+====================================================================== */
+async function logActivity(action, target){
+  try{
+    await db.collection('activityLogs').add({
+      userId: STATE.profile.uid,
+      userName: STATE.profile.name,
+      role: STATE.profile.role,
+      action: action,
+      target: target || '',
+      timestamp: FieldValue.serverTimestamp()
+    });
+  }catch(e){ console.warn('Gagal mencatat audit log', e); }
+}
+
+/* =====================================================================
+   AUTHENTICATION
+====================================================================== */
+const loginForm = document.getElementById('loginForm');
+const loginError = document.getElementById('loginError');
+const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+
+document.getElementById('togglePassword').addEventListener('click', function(){
+  const pw = document.getElementById('loginPassword');
+  pw.type = pw.type === 'password' ? 'text' : 'password';
+  this.textContent = pw.type === 'password' ? 'Lihat' : 'Sembunyikan';
+});
+
+loginForm.addEventListener('submit', async function(e){
+  e.preventDefault();
+  loginError.style.display = 'none';
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  loginSubmitBtn.disabled = true;
+  loginSubmitBtn.textContent = 'Memproses...';
+  try{
+    await auth.signInWithEmailAndPassword(email, password);
+    // onAuthStateChanged will take over from here
+  }catch(err){
+    let msg = 'Email atau password salah.';
+    if(err.code === 'auth/too-many-requests') msg = 'Terlalu banyak percobaan. Coba lagi nanti.';
+    if(err.code === 'auth/invalid-email') msg = 'Format email tidak valid.';
+    if(err.code === 'auth/user-disabled') msg = 'Akun ini telah dinonaktifkan.';
+    loginError.textContent = msg;
+    loginError.style.display = 'block';
+    loginSubmitBtn.disabled = false;
+    loginSubmitBtn.textContent = 'Login';
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async function(){
+  await auth.signOut();
+});
+
+auth.onAuthStateChanged(async function(user){
+  setLoading(true);
+  if(user){
+    try{
+      const profileDoc = await db.collection('users').doc(user.uid).get();
+      if(!profileDoc.exists){
+        showToast('Akun ini belum terdaftar di sistem. Hubungi Owner.', 'error');
+        await auth.signOut();
+        setLoading(false);
+        return;
+      }
+      const data = profileDoc.data();
+      STATE.currentUser = user;
+      STATE.profile = { uid: user.uid, name: data.name || user.email, email: data.email || user.email, role: data.role || 'kasir' };
+
+      document.getElementById('loginPage').classList.add('hidden');
+      document.getElementById('appShell').classList.add('active');
+      loginSubmitBtn.disabled = false;
+      loginSubmitBtn.textContent = 'Login';
+
+      const initials = (STATE.profile.name || '?').trim().charAt(0).toUpperCase();
+      document.getElementById('sideAvatar').textContent = initials;
+      document.getElementById('topAvatar').textContent = initials;
+      document.getElementById('sideUserName').textContent = STATE.profile.name;
+      document.getElementById('topUserName').textContent = STATE.profile.name;
+      document.getElementById('sideUserRole').textContent = ROLE_LABELS[STATE.profile.role] || STATE.profile.role;
+      document.getElementById('topUserRole').textContent = ROLE_LABELS[STATE.profile.role] || STATE.profile.role;
+
+      renderSidebarNav();
+      attachRealtimeListeners();
+      navigateTo('dashboard');
+      setTimeout(()=>{ checkAndRunAutoBackup(); }, 4000);
+    }catch(err){
+      console.error(err);
+      showToast('Gagal memuat profil pengguna.', 'error');
+      await auth.signOut();
+    }
+  }else{
+    STATE.currentUser = null;
+    STATE.profile = null;
+    detachRealtimeListeners();
+    document.getElementById('appShell').classList.remove('active');
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('loginPassword').value = '';
+  }
+  setLoading(false);
+});
+
+/* =====================================================================
+   SIDEBAR NAVIGATION (rendered based on role)
+====================================================================== */
+const NAV_ITEMS = [
+  { id:'dashboard',  icon:'🏠', label:'Dashboard',        area:'dashboard' },
+  { id:'categories', icon:'🗂️', label:'Kategori',          area:'categories', action:'view' },
+  { id:'products',   icon:'📦', label:'Barang',            area:'products', action:'view' },
+  { id:'stockIn',    icon:'⬇️', label:'Barang Masuk',      area:'stockIn', action:'view' },
+  { id:'stockOut',   icon:'⬆️', label:'Barang Keluar',     area:'stockOut', action:'view' },
+  { id:'reports',    icon:'📊', label:'Laporan',           area:'reports' },
+  { id:'users',      icon:'👥', label:'Pengguna',          area:'users', action:'view' },
+  { id:'backup',     icon:'💾', label:'Backup & Restore',  area:'backup', action:'view' },
+  { id:'settings',   icon:'⚙️', label:'Pengaturan',        area:'settings' },
+  { id:'auditlog',   icon:'📋', label:'Audit Log',         area:'auditLog' },
+];
+
+function renderSidebarNav(){
+  const nav = document.getElementById('sidebarNav');
+  nav.innerHTML = NAV_ITEMS.filter(item => {
+    if(item.action) return can(item.area, item.action);
+    return can(item.area);
+  }).map(item => `
+    <div class="nav-item ${STATE.currentPage===item.id?'active':''}" data-nav="${item.id}">
+      <span class="nav-icon">${item.icon}</span><span>${item.label}</span>
+    </div>
+  `).join('');
+  nav.querySelectorAll('.nav-item').forEach(el=>{
+    el.addEventListener('click', ()=> navigateTo(el.dataset.nav));
+  });
+}
+
+/* Mobile sidebar toggle */
+document.getElementById('hamburgerBtn').addEventListener('click', ()=>{
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('mobileBackdrop').classList.add('active');
+});
+document.getElementById('mobileBackdrop').addEventListener('click', closeMobileSidebar);
+function closeMobileSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('mobileBackdrop').classList.remove('active');
+}
+
+/* =====================================================================
+   REALTIME FIRESTORE LISTENERS
+====================================================================== */
+let unsubscribers = [];
+
+function attachRealtimeListeners(){
+  detachRealtimeListeners();
+
+  unsubscribers.push(db.collection('categories').orderBy('name').onSnapshot(snap=>{
+    STATE.categories = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    rerenderCurrentPage();
+  }, err=>console.error('categories listener', err)));
+
+  unsubscribers.push(db.collection('products').orderBy('createdAt','desc').onSnapshot(snap=>{
+    STATE.products = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    rerenderCurrentPage();
+  }, err=>console.error('products listener', err)));
+
+  unsubscribers.push(db.collection('stockIn').orderBy('date','desc').limit(300).onSnapshot(snap=>{
+    STATE.stockIn = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    rerenderCurrentPage();
+  }, err=>console.error('stockIn listener', err)));
+
+  unsubscribers.push(db.collection('stockOut').orderBy('date','desc').limit(300).onSnapshot(snap=>{
+    STATE.stockOut = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    rerenderCurrentPage();
+  }, err=>console.error('stockOut listener', err)));
+
+  if(can('users','view')){
+    unsubscribers.push(db.collection('users').onSnapshot(snap=>{
+      STATE.users = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      rerenderCurrentPage();
+    }, err=>console.error('users listener', err)));
+  }
+
+  if(can('backup','view')){
+    unsubscribers.push(db.collection('backups').orderBy('backupDate','desc').limit(20).onSnapshot(snap=>{
+      STATE.backups = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      rerenderCurrentPage();
+    }, err=>console.error('backups listener', err)));
+  }
+
+  if(can('auditLog')){
+    unsubscribers.push(db.collection('activityLogs').orderBy('timestamp','desc').limit(200).onSnapshot(snap=>{
+      STATE.activityLogs = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      rerenderCurrentPage();
+    }, err=>console.error('activityLogs listener', err)));
+  }
+}
+function detachRealtimeListeners(){
+  unsubscribers.forEach(u=>u());
+  unsubscribers = [];
+}
+function rerenderCurrentPage(){
+  renderPage(STATE.currentPage, false);
+}
+
+/* =====================================================================
+   ROUTER
+====================================================================== */
+function navigateTo(pageId){
+  STATE.currentPage = pageId;
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    el.classList.toggle('active', el.dataset.nav === pageId);
+  });
+  closeMobileSidebar();
+  renderPage(pageId, true);
+}
+
+function renderPage(pageId, resetScroll){
+  const container = document.getElementById('pageContainer');
+  const allowedMap = {
+    dashboard: ()=>true,
+    categories: ()=>can('categories','view'),
+    products: ()=>can('products','view'),
+    stockIn: ()=>can('stockIn','view'),
+    stockOut: ()=>can('stockOut','view'),
+    reports: ()=>can('reports'),
+    users: ()=>can('users','view'),
+    backup: ()=>can('backup','view'),
+    settings: ()=>can('settings'),
+    auditlog: ()=>can('auditLog')
+  };
+  if(allowedMap[pageId] && !allowedMap[pageId]()){
+    container.innerHTML = `<div class="access-denied"><div class="ei">🚫</div><h3>Akses Ditolak</h3><p>Anda tidak memiliki izin untuk mengakses halaman ini.</p></div>`;
+    return;
+  }
+  switch(pageId){
+    case 'dashboard':  container.innerHTML = renderDashboardPage(); initDashboardCharts(); break;
+    case 'categories': container.innerHTML = renderCategoriesPage(); break;
+    case 'products':   container.innerHTML = renderProductsPage(); break;
+    case 'stockIn':    container.innerHTML = renderStockInPage(); break;
+    case 'stockOut':   container.innerHTML = renderStockOutPage(); break;
+    case 'reports':    container.innerHTML = renderReportsPage(); break;
+    case 'users':      container.innerHTML = renderUsersPage(); break;
+    case 'backup':     container.innerHTML = renderBackupPage(); break;
+    case 'settings':   container.innerHTML = renderSettingsPage(); break;
+    case 'auditlog':   container.innerHTML = renderAuditLogPage(); break;
+    default:           container.innerHTML = renderDashboardPage(); initDashboardCharts();
+  }
+  if(resetScroll) window.scrollTo(0,0);
+  attachPageEventListeners(pageId);
+}
+
+/* =====================================================================
+   DASHBOARD PAGE
+====================================================================== */
+function computeDashboardStats(){
+  const totalCategories = STATE.categories.length;
+  const totalProducts = STATE.products.length;
+  const totalStock = STATE.products.reduce((sum,p)=> sum + (Number(p.stock)||0), 0);
+  const lowStockItems = STATE.products.filter(p => (Number(p.stock)||0) <= (Number(p.minimumStock)||0));
+  const inventoryValue = STATE.products.reduce((sum,p)=> sum + (Number(p.stock)||0) * (Number(p.sellingPrice)||0), 0);
+  return { totalCategories, totalProducts, totalStock, lowStockItems, inventoryValue };
+}
+
+function getTopSellingProducts(limit=10){
+  const qtyMap = {};
+  STATE.stockOut.forEach(so=>{
+    qtyMap[so.productId] = (qtyMap[so.productId]||0) + (Number(so.quantity)||0);
+  });
+  return Object.entries(qtyMap)
+    .map(([productId, qty])=>{
+      const p = STATE.products.find(p=>p.id===productId);
+      return { name: p ? p.name : 'Barang Terhapus', qty };
+    })
+    .sort((a,b)=>b.qty-a.qty)
+    .slice(0, limit);
+}
+
+function getRecentActivities(limit=6){
+  return STATE.activityLogs.slice(0, limit);
+}
+
+function renderDashboardPage(){
+  const stats = computeDashboardStats();
+  const lowStockHtml = stats.lowStockItems.slice(0,5).map(p=>`
+    <div class="low-stock-item">
+      <div class="low-stock-thumb">📦</div>
+      <div class="low-stock-info">
+        <strong>${escapeHtml(p.name)}</strong>
+        <span>Stok: ${p.stock ?? 0}</span>
+      </div>
+      <div class="low-stock-min">Min: ${p.minimumStock ?? 0}</div>
+    </div>
+  `).join('') || `<div class="empty-state"><div class="ei">✅</div>Tidak ada barang dengan stok menipis</div>`;
+
+  const topProducts = getTopSellingProducts(10);
+  const topHtml = topProducts.map((t,i)=>`
+    <div class="top-list-item">
+      <div class="top-list-rank">${i+1}</div>
+      <div class="tl-name">${escapeHtml(t.name)}</div>
+      <div class="tl-val">${t.qty.toLocaleString('id-ID')}</div>
+    </div>
+  `).join('') || `<div class="empty-state"><div class="ei">📊</div>Belum ada data penjualan</div>`;
+
+  const activities = getRecentActivities(6);
+  const activityRows = activities.map(a=>`
+    <tr>
+      <td>${formatDateTime(a.timestamp)}</td>
+      <td>${escapeHtml(a.userName)}</td>
+      <td>${escapeHtml(a.action)}</td>
+      <td>${escapeHtml(a.target||'-')}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--gray-500);padding:20px;">Belum ada aktivitas</td></tr>`;
+
+  const ownerWidgets = can('reports') ? `
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-header"><h3>Grafik Barang Masuk &amp; Keluar (6 Bulan Terakhir)</h3></div>
+        <div class="card-body"><canvas id="chartInOut" height="180"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Grafik Kategori Terbanyak</h3></div>
+        <div class="card-body"><canvas id="chartCategory" height="180"></canvas></div>
+      </div>
+    </div>
+  ` : '';
+
+  return `
+    <div class="page-header">
+      <div>
+        <h2>Dashboard</h2>
+        <p>Selamat datang kembali, ${escapeHtml(STATE.profile.name)}</p>
+      </div>
+      <div class="page-date-pill">📅 ${todayLabel()}</div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#DBEAFE;color:#1E40AF;">🗂️</div>
+        <div class="stat-value">${stats.totalCategories}</div>
+        <div class="stat-label">Kategori</div>
+        <div class="stat-link" data-nav-link="categories">Lihat semua</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#DCFCE7;color:#15803D;">📦</div>
+        <div class="stat-value">${stats.totalProducts}</div>
+        <div class="stat-label">Total Barang</div>
+        <div class="stat-link" data-nav-link="products">Lihat semua</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#FEF3C7;color:#92400E;">💎</div>
+        <div class="stat-value">${stats.totalStock.toLocaleString('id-ID')}</div>
+        <div class="stat-label">Total Stok</div>
+        <div class="stat-link" data-nav-link="products">Lihat semua</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#FEE2E2;color:#B91C1C;">⚠️</div>
+        <div class="stat-value">${stats.lowStockItems.length}</div>
+        <div class="stat-label">Stok Menipis</div>
+        <div class="stat-link" data-nav-link="products">Lihat semua</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#EDE9FE;color:#6D28D9;">💰</div>
+        <div class="stat-value">${formatRupiah(stats.inventoryValue)}</div>
+        <div class="stat-label">Nilai Inventaris</div>
+        <div class="stat-link" data-nav-link="reports">Lihat detail</div>
+      </div>
+    </div>
+
+    ${ownerWidgets}
+
+    <div class="dashboard-bottom-grid">
+      <div class="card">
+        <div class="card-header"><h3>Aktivitas Terbaru</h3>${can('auditLog') ? '<span class="card-link" data-nav-link="auditlog">Lihat semua</span>' : ''}</div>
+        <div class="card-body" style="padding-top:6px;overflow-x:auto;">
+          <table class="activity-table">
+            <thead><tr><th>Waktu</th><th>User</th><th>Aktivitas</th><th>Detail</th></tr></thead>
+            <tbody>${activityRows}</tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:18px;">
+          <div class="card-header"><h3>Stok Menipis</h3><span class="card-link" data-nav-link="products">Lihat semua</span></div>
+          <div class="card-body">${lowStockHtml}</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Top 10 Terlaris</h3></div>
+          <div class="card-body">${topHtml}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function initDashboardCharts(){
+  if(!can('reports')) return;
+  // Destroy old chart instances to avoid memory leak / canvas reuse error
+  if(STATE.charts.inout){ STATE.charts.inout.destroy(); }
+  if(STATE.charts.category){ STATE.charts.category.destroy(); }
+
+  // Build last-6-months buckets
+  const months = [];
+  const now = new Date();
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString('id-ID',{month:'short'}) });
+  }
+  const inData = months.map(m=>0);
+  const outData = months.map(m=>0);
+  STATE.stockIn.forEach(si=>{
+    const d = si.date && si.date.toDate ? si.date.toDate() : new Date(si.date);
+    if(isNaN(d)) return;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    const idx = months.findIndex(m=>m.key===key);
+    if(idx>-1) inData[idx] += Number(si.quantity)||0;
+  });
+  STATE.stockOut.forEach(so=>{
+    const d = so.date && so.date.toDate ? so.date.toDate() : new Date(so.date);
+    if(isNaN(d)) return;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    const idx = months.findIndex(m=>m.key===key);
+    if(idx>-1) outData[idx] += Number(so.quantity)||0;
+  });
+
+  const ctxInOut = document.getElementById('chartInOut');
+  if(ctxInOut){
+    STATE.charts.inout = new Chart(ctxInOut, {
+      type:'line',
+      data:{
+        labels: months.map(m=>m.label),
+        datasets:[
+          { label:'Barang Masuk', data:inData, borderColor:'#1E3A8A', backgroundColor:'rgba(30,58,138,0.08)', tension:0.35, fill:true },
+          { label:'Barang Keluar', data:outData, borderColor:'#F97316', backgroundColor:'rgba(249,115,22,0.08)', tension:0.35, fill:true },
+        ]
+      },
+      options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
+    });
+  }
+
+  // Category distribution (by product count)
+  const catCounts = {};
+  STATE.products.forEach(p=>{
+    const cat = STATE.categories.find(c=>c.id===p.categoryId);
+    const label = cat ? cat.name : 'Lainnya';
+    catCounts[label] = (catCounts[label]||0) + 1;
+  });
+  const catLabels = Object.keys(catCounts);
+  const catValues = Object.values(catCounts);
+  const palette = ['#1E3A8A','#F97316','#16A34A','#D97706','#6D28D9','#DC2626','#0891B2','#65A30D','#BE185D'];
+
+  const ctxCat = document.getElementById('chartCategory');
+  if(ctxCat){
+    STATE.charts.category = new Chart(ctxCat, {
+      type:'doughnut',
+      data:{
+        labels: catLabels.length ? catLabels : ['Belum ada data'],
+        datasets:[{ data: catValues.length ? catValues : [1], backgroundColor: palette, borderWidth:2, borderColor:'#fff' }]
+      },
+      options:{ responsive:true, plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}} }
+    });
+  }
+}
+
+/* =====================================================================
+   CATEGORIES PAGE
+====================================================================== */
+function getFilteredCategories(){
+  const term = STATE.searchTerms.categories.toLowerCase();
+  return STATE.categories.filter(c => !term || c.name.toLowerCase().includes(term));
+}
+function countProductsInCategory(categoryId){
+  return STATE.products.filter(p=>p.categoryId===categoryId).length;
+}
+
+function renderCategoriesPage(){
+  const all = getFilteredCategories();
+  const page = STATE.pagination.categories;
+  const totalPages = Math.max(1, Math.ceil(all.length / STATE.pageSize));
+  const pageItems = all.slice((page-1)*STATE.pageSize, page*STATE.pageSize);
+
+  const rows = pageItems.map(c=>`
+    <tr>
+      <td><strong>${escapeHtml(c.name)}</strong></td>
+      <td>${countProductsInCategory(c.id)} barang</td>
+      <td>${formatDate(c.createdAt)}</td>
+      <td>
+        <div class="row-actions">
+          ${can('categories','edit') ? `<button class="icon-btn" data-edit-cat="${c.id}" title="Edit">✏️</button>` : ''}
+          ${can('categories','delete') ? `<button class="icon-btn danger" data-del-cat="${c.id}" title="Hapus">🗑️</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('') || `<tr><td colspan="4"><div class="empty-state"><div class="ei">🗂️</div>Belum ada kategori</div></td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Manajemen Kategori</h2><p>Kelola kategori barang toko</p></div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding-bottom:0;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-input"><span>🔍</span><input type="text" id="catSearchInput" placeholder="Cari kategori..." value="${escapeHtml(STATE.searchTerms.categories)}"></div>
+          </div>
+          <div class="toolbar-right">
+            ${can('categories','add') ? `<button class="btn btn-orange" id="addCategoryBtn">+ Tambah Kategori</button>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Nama Kategori</th><th>Jumlah Barang</th><th>Dibuat</th><th>Aksi</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${renderPaginationBar('categories', all.length, totalPages, page)}
+    </div>
+  `;
+}
+
+function renderPaginationBar(key, totalItems, totalPages, currentPage){
+  if(totalItems === 0) return '';
+  let buttons = '';
+  for(let i=1;i<=totalPages;i++){
+    if(totalPages>6 && Math.abs(i-currentPage)>2 && i!==1 && i!==totalPages){
+      if(i === 2 || i === totalPages-1) buttons += `<span style="padding:0 4px;color:var(--gray-400);">...</span>`;
+      continue;
+    }
+    buttons += `<button class="page-btn ${i===currentPage?'active':''}" data-page-go="${key}:${i}">${i}</button>`;
+  }
+  return `
+    <div class="pagination-bar">
+      <span>Menampilkan ${Math.min((currentPage-1)*STATE.pageSize+1, totalItems)}-${Math.min(currentPage*STATE.pageSize,totalItems)} dari ${totalItems} data</span>
+      <div class="pagination-controls">
+        <button class="page-btn" data-page-go="${key}:${currentPage-1}" ${currentPage<=1?'disabled':''}>‹</button>
+        ${buttons}
+        <button class="page-btn" data-page-go="${key}:${currentPage+1}" ${currentPage>=totalPages?'disabled':''}>›</button>
+      </div>
+    </div>
+  `;
+}
+
+function openCategoryModal(category){
+  const isEdit = !!category;
+  openModal({
+    title: isEdit ? 'Edit Kategori' : 'Tambah Kategori',
+    bodyHtml: `
+      <div class="field-group">
+        <label>Nama Kategori</label>
+        <input type="text" id="catNameInput" placeholder="contoh: Besi Beton" value="${isEdit ? escapeHtml(category.name) : ''}">
+      </div>
+    `,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label: isEdit ? 'Simpan Perubahan' : 'Tambah Kategori', class:'btn-orange', onClick: async ()=>{
+          const name = document.getElementById('catNameInput').value.trim();
+          if(!name){ showToast('Nama kategori wajib diisi', 'error'); return; }
+          try{
+            if(isEdit){
+              await db.collection('categories').doc(category.id).update({ name });
+              await logActivity('Mengedit kategori', name);
+              showToast('Kategori berhasil diperbarui');
+            }else{
+              await db.collection('categories').add({ name, createdAt: FieldValue.serverTimestamp() });
+              await logActivity('Menambah kategori', name);
+              showToast('Kategori berhasil ditambahkan');
+            }
+            closeModal();
+          }catch(err){ console.error(err); showToast('Gagal menyimpan kategori', 'error'); }
+        }
+      }
+    ]
+  });
+}
+
+async function deleteCategory(categoryId){
+  const cat = STATE.categories.find(c=>c.id===categoryId);
+  if(!cat) return;
+  const usageCount = countProductsInCategory(categoryId);
+  if(usageCount > 0){
+    showToast(`Kategori masih dipakai ${usageCount} barang. Pindahkan barang dulu.`, 'error');
+    return;
+  }
+  confirmAction(`Hapus kategori "${cat.name}"? Tindakan ini tidak bisa dibatalkan.`, async ()=>{
+    try{
+      await db.collection('categories').doc(categoryId).delete();
+      await logActivity('Menghapus kategori', cat.name);
+      showToast('Kategori berhasil dihapus');
+    }catch(err){ console.error(err); showToast('Gagal menghapus kategori', 'error'); }
+  });
+}
+
+/* =====================================================================
+   GENERIC MODAL SYSTEM
+====================================================================== */
+const modalOverlay = document.getElementById('modalOverlay');
+const modalBox = document.getElementById('modalBox');
+
+function openModal({ title, bodyHtml, footButtons, large }){
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  modalBox.classList.toggle('modal-lg', !!large);
+  const foot = document.getElementById('modalFoot');
+  foot.innerHTML = '';
+  (footButtons||[]).forEach(btn=>{
+    const b = document.createElement('button');
+    b.className = 'btn ' + (btn.class||'btn-outline');
+    b.textContent = btn.label;
+    b.id = btn.id || '';
+    b.addEventListener('click', btn.onClick);
+    foot.appendChild(b);
+  });
+  modalOverlay.classList.add('active');
+}
+function closeModal(){
+  modalOverlay.classList.remove('active');
+}
+document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e)=>{ if(e.target === modalOverlay) closeModal(); });
+
+function confirmAction(message, onConfirm){
+  openModal({
+    title: 'Konfirmasi',
+    bodyHtml: `<p style="margin:0;color:var(--gray-700);font-size:14px;">${escapeHtml(message)}</p>`,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label:'Ya, Lanjutkan', class:'btn-danger', onClick: async ()=>{ closeModal(); await onConfirm(); } }
+    ]
+  });
+}
+
+/* =====================================================================
+   PRODUCTS (BARANG) PAGE
+====================================================================== */
+function getFilteredProducts(){
+  const term = STATE.searchTerms.products.toLowerCase();
+  const catFilter = STATE.filters.productsCategory;
+  return STATE.products.filter(p=>{
+    const matchesTerm = !term || p.name.toLowerCase().includes(term) || (p.code||'').toLowerCase().includes(term);
+    const matchesCat = !catFilter || p.categoryId === catFilter;
+    return matchesTerm && matchesCat;
+  });
+}
+function categoryName(categoryId){
+  const c = STATE.categories.find(c=>c.id===categoryId);
+  return c ? c.name : '-';
+}
+
+function renderProductsPage(){
+  const all = getFilteredProducts();
+  const page = STATE.pagination.products;
+  const totalPages = Math.max(1, Math.ceil(all.length / STATE.pageSize));
+  const pageItems = all.slice((page-1)*STATE.pageSize, page*STATE.pageSize);
+
+  const catOptions = STATE.categories.map(c=>`<option value="${c.id}" ${STATE.filters.productsCategory===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+
+  const rows = pageItems.map(p=>{
+    const isLow = (Number(p.stock)||0) <= (Number(p.minimumStock)||0);
+    return `
+    <tr>
+      <td><strong>${escapeHtml(p.code)}</strong></td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(categoryName(p.categoryId))}</td>
+      <td>${escapeHtml(p.unit)}</td>
+      <td>${formatRupiah(p.sellingPrice)}</td>
+      <td>${p.stock ?? 0} ${isLow ? '<span class="badge badge-danger">Menipis</span>' : '<span class="badge badge-success">Aman</span>'}</td>
+      <td>${p.minimumStock ?? 0}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" data-view-prod="${p.id}" title="Detail">👁️</button>
+          ${can('products','edit') ? `<button class="icon-btn" data-edit-prod="${p.id}" title="Edit">✏️</button>` : ''}
+          ${can('products','delete') ? `<button class="icon-btn danger" data-del-prod="${p.id}" title="Hapus">🗑️</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8"><div class="empty-state"><div class="ei">📦</div>Tidak ada barang ditemukan</div></td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Manajemen Barang</h2><p>Kelola data barang dan stok toko</p></div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding-bottom:0;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-input"><span>🔍</span><input type="text" id="prodSearchInput" placeholder="Cari barang / kode..." value="${escapeHtml(STATE.searchTerms.products)}"></div>
+            <select class="select-filter" id="prodCategoryFilter">
+              <option value="">Semua Kategori</option>
+              ${catOptions}
+            </select>
+          </div>
+          <div class="toolbar-right">
+            ${can('products','add') ? `<button class="btn btn-orange" id="addProductBtn">+ Tambah Barang</button>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Kode</th><th>Nama Barang</th><th>Kategori</th><th>Satuan</th><th>Harga Jual</th><th>Stok</th><th>Min. Stok</th><th>Aksi</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${renderPaginationBar('products', all.length, totalPages, page)}
+    </div>
+  `;
+}
+
+function openProductModal(product){
+  const isEdit = !!product;
+  if(STATE.categories.length === 0){
+    showToast('Tambahkan kategori terlebih dahulu sebelum menambah barang.', 'warn');
+    return;
+  }
+  const catOptions = STATE.categories.map(c=>`<option value="${c.id}" ${isEdit && product.categoryId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+  openModal({
+    title: isEdit ? 'Edit Barang' : 'Tambah Barang',
+    large: true,
+    bodyHtml: `
+      <div class="form-grid-2">
+        <div class="field-group">
+          <label>Nama Barang</label>
+          <input type="text" id="pName" placeholder="contoh: Besi Beton 10mm" value="${isEdit?escapeHtml(product.name):''}">
+        </div>
+        <div class="field-group">
+          <label>Kode Barang</label>
+          <input type="text" id="pCode" value="${isEdit?escapeHtml(product.code):'Otomatis saat disimpan'}" disabled style="background:var(--gray-200);color:var(--gray-500);">
+        </div>
+        <div class="field-group">
+          <label>Kategori</label>
+          <select id="pCategory">${catOptions}</select>
+        </div>
+        <div class="field-group">
+          <label>Satuan</label>
+          <input type="text" id="pUnit" placeholder="pcs / zak / batang / m3" value="${isEdit?escapeHtml(product.unit):''}">
+        </div>
+        <div class="field-group">
+          <label>Harga Beli</label>
+          <input type="number" id="pPurchasePrice" placeholder="0" value="${isEdit?product.purchasePrice||0:''}">
+        </div>
+        <div class="field-group">
+          <label>Harga Jual</label>
+          <input type="number" id="pSellingPrice" placeholder="0" value="${isEdit?product.sellingPrice||0:''}">
+        </div>
+        <div class="field-group">
+          <label>Jumlah Stok</label>
+          <input type="number" id="pStock" placeholder="0" value="${isEdit?product.stock||0:''}" ${isEdit?'':''}>
+          <div class="field-hint">${isEdit ? 'Ubah stok manual hanya untuk koreksi. Gunakan menu Barang Masuk/Keluar untuk transaksi normal.' : ''}</div>
+        </div>
+        <div class="field-group">
+          <label>Minimum Stok</label>
+          <input type="number" id="pMinStock" placeholder="0" value="${isEdit?product.minimumStock||0:''}">
+        </div>
+        <div class="field-group">
+          <label>Lokasi Rak (opsional)</label>
+          <input type="text" id="pRack" placeholder="contoh: Rak A1" value="${isEdit?escapeHtml(product.rackLocation||''):''}">
+        </div>
+      </div>
+    `,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label: isEdit ? 'Simpan Perubahan' : 'Tambah Barang', class:'btn-orange', onClick: async ()=>{
+          const name = document.getElementById('pName').value.trim();
+          const categoryId = document.getElementById('pCategory').value;
+          const unit = document.getElementById('pUnit').value.trim();
+          const purchasePrice = Number(document.getElementById('pPurchasePrice').value)||0;
+          const sellingPrice = Number(document.getElementById('pSellingPrice').value)||0;
+          const stock = Number(document.getElementById('pStock').value)||0;
+          const minimumStock = Number(document.getElementById('pMinStock').value)||0;
+          const rackLocation = document.getElementById('pRack').value.trim();
+          if(!name || !categoryId || !unit){ showToast('Nama, kategori, dan satuan wajib diisi', 'error'); return; }
+          try{
+            if(isEdit){
+              await db.collection('products').doc(product.id).update({
+                name, categoryId, unit, purchasePrice, sellingPrice, stock, minimumStock, rackLocation
+              });
+              await logActivity('Mengedit barang', name);
+              showToast('Barang berhasil diperbarui');
+            }else{
+              const code = genProductCode(categoryName(categoryId));
+              await db.collection('products').add({
+                code, name, categoryId, unit, purchasePrice, sellingPrice, stock, minimumStock, rackLocation,
+                createdAt: FieldValue.serverTimestamp()
+              });
+              await logActivity('Menambah barang', name);
+              showToast('Barang berhasil ditambahkan');
+            }
+            closeModal();
+          }catch(err){ console.error(err); showToast('Gagal menyimpan barang', 'error'); }
+        }
+      }
+    ]
+  });
+}
+
+function viewProductDetail(productId){
+  const p = STATE.products.find(p=>p.id===productId);
+  if(!p) return;
+  openModal({
+    title: 'Detail Barang',
+    bodyHtml: `
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13.5px;">
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Nama Barang</span><strong>${escapeHtml(p.name)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Kode Barang</span><strong>${escapeHtml(p.code)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Kategori</span><strong>${escapeHtml(categoryName(p.categoryId))}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Satuan</span><strong>${escapeHtml(p.unit)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Harga Beli</span><strong>${formatRupiah(p.purchasePrice)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Harga Jual</span><strong>${formatRupiah(p.sellingPrice)}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Stok</span><strong>${p.stock??0}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Minimum Stok</span><strong>${p.minimumStock??0}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Lokasi Rak</span><strong>${escapeHtml(p.rackLocation||'-')}</strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:var(--gray-500);">Tanggal Input</span><strong>${formatDate(p.createdAt)}</strong></div>
+      </div>
+    `,
+    footButtons: [ { label:'Tutup', class:'btn-navy', onClick: closeModal } ]
+  });
+}
+
+async function deleteProduct(productId){
+  const p = STATE.products.find(p=>p.id===productId);
+  if(!p) return;
+  confirmAction(`Hapus barang "${p.name}"? Riwayat transaksi terkait tidak akan terhapus.`, async ()=>{
+    try{
+      await db.collection('products').doc(productId).delete();
+      await logActivity('Menghapus barang', p.name);
+      showToast('Barang berhasil dihapus');
+    }catch(err){ console.error(err); showToast('Gagal menghapus barang', 'error'); }
+  });
+}
+
+/* =====================================================================
+   STOCK IN (BARANG MASUK) PAGE
+====================================================================== */
+function getFilteredStockIn(){
+  const term = STATE.searchTerms.stockIn.toLowerCase();
+  return STATE.stockIn.filter(s=>{
+    const p = STATE.products.find(p=>p.id===s.productId);
+    const name = p ? p.name.toLowerCase() : '';
+    return !term || name.includes(term) || (s.supplier||'').toLowerCase().includes(term);
+  });
+}
+
+function renderStockInPage(){
+  const all = getFilteredStockIn();
+  const page = STATE.pagination.stockIn;
+  const totalPages = Math.max(1, Math.ceil(all.length / STATE.pageSize));
+  const pageItems = all.slice((page-1)*STATE.pageSize, page*STATE.pageSize);
+
+  const rows = pageItems.map(s=>{
+    const p = STATE.products.find(p=>p.id===s.productId);
+    return `
+    <tr>
+      <td>${formatDate(s.date)}</td>
+      <td>${escapeHtml(p ? p.name : 'Barang Terhapus')}</td>
+      <td>${s.quantity} ${p?escapeHtml(p.unit):''}</td>
+      <td>${escapeHtml(s.supplier||'-')}</td>
+      <td>${escapeHtml(s.note||'-')}</td>
+      <td>
+        <div class="row-actions">
+          ${can('stockIn','delete') ? `<button class="icon-btn danger" data-del-stockin="${s.id}" title="Hapus">🗑️</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ei">⬇️</div>Belum ada data barang masuk</div></td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Barang Masuk</h2><p>Catat penerimaan barang dari supplier</p></div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding-bottom:0;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-input"><span>🔍</span><input type="text" id="stockInSearchInput" placeholder="Cari barang / supplier..." value="${escapeHtml(STATE.searchTerms.stockIn)}"></div>
+          </div>
+          <div class="toolbar-right">
+            ${can('stockIn','add') ? `<button class="btn btn-orange" id="addStockInBtn">+ Barang Masuk</button>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Tanggal</th><th>Nama Barang</th><th>Jumlah</th><th>Supplier</th><th>Catatan</th><th>Aksi</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${renderPaginationBar('stockIn', all.length, totalPages, page)}
+    </div>
+  `;
+}
+
+function openStockInModal(){
+  if(STATE.products.length === 0){
+    showToast('Tambahkan barang terlebih dahulu.', 'warn');
+    return;
+  }
+  const prodOptions = STATE.products.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} (${escapeHtml(p.code)})</option>`).join('');
+  openModal({
+    title: 'Tambah Barang Masuk',
+    bodyHtml: `
+      <div class="field-group">
+        <label>Tanggal</label>
+        <input type="date" id="siDate" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+      <div class="field-group">
+        <label>Nama Barang</label>
+        <select id="siProduct">${prodOptions}</select>
+      </div>
+      <div class="field-group">
+        <label>Jumlah</label>
+        <input type="number" id="siQty" placeholder="0" min="1">
+      </div>
+      <div class="field-group">
+        <label>Supplier</label>
+        <input type="text" id="siSupplier" placeholder="contoh: Toko Baja Jaya">
+      </div>
+      <div class="field-group">
+        <label>Catatan (opsional)</label>
+        <textarea id="siNote" rows="2" placeholder="Catatan tambahan..."></textarea>
+      </div>
+    `,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label:'Simpan', class:'btn-orange', onClick: async ()=>{
+          const dateVal = document.getElementById('siDate').value;
+          const productId = document.getElementById('siProduct').value;
+          const quantity = Number(document.getElementById('siQty').value)||0;
+          const supplier = document.getElementById('siSupplier').value.trim();
+          const note = document.getElementById('siNote').value.trim();
+          if(!dateVal || !productId || quantity<=0){ showToast('Lengkapi tanggal, barang, dan jumlah (>0)', 'error'); return; }
+          try{
+            const productRef = db.collection('products').doc(productId);
+            await db.runTransaction(async (tx)=>{
+              const snap = await tx.get(productRef);
+              if(!snap.exists) throw new Error('Barang tidak ditemukan');
+              const currentStock = Number(snap.data().stock)||0;
+              tx.update(productRef, { stock: currentStock + quantity });
+              tx.set(db.collection('stockIn').doc(), {
+                productId, quantity, supplier, note,
+                date: Timestamp.fromDate(new Date(dateVal))
+              });
+            });
+            const p = STATE.products.find(p=>p.id===productId);
+            await logActivity('Menambah Barang Masuk', `${p?p.name:''} (+${quantity})`);
+            showToast('Barang masuk berhasil disimpan, stok otomatis bertambah');
+            closeModal();
+          }catch(err){ console.error(err); showToast('Gagal menyimpan barang masuk', 'error'); }
+        }
+      }
+    ]
+  });
+}
+
+async function deleteStockIn(stockInId){
+  const s = STATE.stockIn.find(s=>s.id===stockInId);
+  if(!s) return;
+  confirmAction('Hapus transaksi barang masuk ini? Stok barang akan dikurangi kembali sesuai jumlah transaksi.', async ()=>{
+    try{
+      const productRef = db.collection('products').doc(s.productId);
+      const stockInRef = db.collection('stockIn').doc(stockInId);
+      await db.runTransaction(async (tx)=>{
+        const snap = await tx.get(productRef);
+        if(snap.exists){
+          const currentStock = Number(snap.data().stock)||0;
+          tx.update(productRef, { stock: Math.max(0, currentStock - Number(s.quantity||0)) });
+        }
+        tx.delete(stockInRef);
+      });
+      await logActivity('Menghapus Barang Masuk', `Qty ${s.quantity}`);
+      showToast('Transaksi barang masuk berhasil dihapus');
+    }catch(err){ console.error(err); showToast('Gagal menghapus transaksi', 'error'); }
+  });
+}
+
+/* =====================================================================
+   STOCK OUT (BARANG KELUAR) PAGE
+====================================================================== */
+function getFilteredStockOut(){
+  const term = STATE.searchTerms.stockOut.toLowerCase();
+  return STATE.stockOut.filter(s=>{
+    const p = STATE.products.find(p=>p.id===s.productId);
+    const name = p ? p.name.toLowerCase() : '';
+    return !term || name.includes(term) || (s.destination||'').toLowerCase().includes(term);
+  });
+}
+
+function renderStockOutPage(){
+  const all = getFilteredStockOut();
+  const page = STATE.pagination.stockOut;
+  const totalPages = Math.max(1, Math.ceil(all.length / STATE.pageSize));
+  const pageItems = all.slice((page-1)*STATE.pageSize, page*STATE.pageSize);
+
+  const rows = pageItems.map(s=>{
+    const p = STATE.products.find(p=>p.id===s.productId);
+    return `
+    <tr>
+      <td>${formatDate(s.date)}</td>
+      <td>${escapeHtml(p ? p.name : 'Barang Terhapus')}</td>
+      <td>${s.quantity} ${p?escapeHtml(p.unit):''}</td>
+      <td>${escapeHtml(s.destination||'-')}</td>
+      <td>${escapeHtml(s.note||'-')}</td>
+      <td>
+        <div class="row-actions">
+          ${can('stockOut','delete') ? `<button class="icon-btn danger" data-del-stockout="${s.id}" title="Hapus">🗑️</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6"><div class="empty-state"><div class="ei">⬆️</div>Belum ada data barang keluar</div></td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Barang Keluar</h2><p>Catat penjualan / pengeluaran barang</p></div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding-bottom:0;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-input"><span>🔍</span><input type="text" id="stockOutSearchInput" placeholder="Cari barang / tujuan..." value="${escapeHtml(STATE.searchTerms.stockOut)}"></div>
+          </div>
+          <div class="toolbar-right">
+            ${can('stockOut','add') ? `<button class="btn btn-orange" id="addStockOutBtn">+ Barang Keluar</button>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Tanggal</th><th>Nama Barang</th><th>Jumlah</th><th>Tujuan</th><th>Catatan</th><th>Aksi</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${renderPaginationBar('stockOut', all.length, totalPages, page)}
+    </div>
+  `;
+}
+
+function openStockOutModal(){
+  if(STATE.products.length === 0){
+    showToast('Tambahkan barang terlebih dahulu.', 'warn');
+    return;
+  }
+  const prodOptions = STATE.products.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} (Stok: ${p.stock??0})</option>`).join('');
+  openModal({
+    title: 'Tambah Barang Keluar',
+    bodyHtml: `
+      <div class="field-group">
+        <label>Tanggal</label>
+        <input type="date" id="soDate" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+      <div class="field-group">
+        <label>Nama Barang</label>
+        <select id="soProduct">${prodOptions}</select>
+      </div>
+      <div class="field-group">
+        <label>Jumlah</label>
+        <input type="number" id="soQty" placeholder="0" min="1">
+      </div>
+      <div class="field-group">
+        <label>Tujuan Penjualan</label>
+        <select id="soDestType">
+          <option value="Penjualan ke Customer">Penjualan ke Customer</option>
+          <option value="Proyek Internal">Proyek Internal</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Catatan (opsional)</label>
+        <textarea id="soNote" rows="2" placeholder="contoh: Penjualan proyek ABC"></textarea>
+      </div>
+    `,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label:'Simpan', class:'btn-orange', onClick: async ()=>{
+          const dateVal = document.getElementById('soDate').value;
+          const productId = document.getElementById('soProduct').value;
+          const quantity = Number(document.getElementById('soQty').value)||0;
+          const destination = document.getElementById('soDestType').value;
+          const note = document.getElementById('soNote').value.trim();
+          if(!dateVal || !productId || quantity<=0){ showToast('Lengkapi tanggal, barang, dan jumlah (>0)', 'error'); return; }
+          try{
+            const productRef = db.collection('products').doc(productId);
+            await db.runTransaction(async (tx)=>{
+              const snap = await tx.get(productRef);
+              if(!snap.exists) throw new Error('Barang tidak ditemukan');
+              const currentStock = Number(snap.data().stock)||0;
+              if(currentStock < quantity) throw new Error('INSUFFICIENT_STOCK');
+              tx.update(productRef, { stock: currentStock - quantity });
+              tx.set(db.collection('stockOut').doc(), {
+                productId, quantity, destination, note,
+                date: Timestamp.fromDate(new Date(dateVal))
+              });
+            });
+            const p = STATE.products.find(p=>p.id===productId);
+            await logActivity('Menambah Barang Keluar', `${p?p.name:''} (-${quantity})`);
+            showToast('Barang keluar berhasil disimpan, stok otomatis berkurang');
+            closeModal();
+          }catch(err){
+            console.error(err);
+            if(err.message === 'INSUFFICIENT_STOCK'){
+              showToast('Stok tidak cukup untuk jumlah yang diminta', 'error');
+            }else{
+              showToast('Gagal menyimpan barang keluar', 'error');
+            }
+          }
+        }
+      }
+    ]
+  });
+}
+
+async function deleteStockOut(stockOutId){
+  const s = STATE.stockOut.find(s=>s.id===stockOutId);
+  if(!s) return;
+  confirmAction('Hapus transaksi barang keluar ini? Stok barang akan dikembalikan sesuai jumlah transaksi.', async ()=>{
+    try{
+      const productRef = db.collection('products').doc(s.productId);
+      const stockOutRef = db.collection('stockOut').doc(stockOutId);
+      await db.runTransaction(async (tx)=>{
+        const snap = await tx.get(productRef);
+        if(snap.exists){
+          const currentStock = Number(snap.data().stock)||0;
+          tx.update(productRef, { stock: currentStock + Number(s.quantity||0) });
+        }
+        tx.delete(stockOutRef);
+      });
+      await logActivity('Menghapus Barang Keluar', `Qty ${s.quantity}`);
+      showToast('Transaksi barang keluar berhasil dihapus');
+    }catch(err){ console.error(err); showToast('Gagal menghapus transaksi', 'error'); }
+  });
+}
+
+/* =====================================================================
+   REPORTS PAGE (Export PDF & Excel)
+====================================================================== */
+function renderReportsPage(){
+  const stats = computeDashboardStats();
+  return `
+    <div class="page-header">
+      <div><h2>Laporan</h2><p>Export laporan stok dan transaksi dalam format PDF / Excel</p></div>
+    </div>
+
+    <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);">
+      <div class="stat-card"><div class="stat-icon" style="background:#DCFCE7;color:#15803D;">📦</div><div class="stat-value">${stats.totalProducts}</div><div class="stat-label">Total Barang</div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#FEE2E2;color:#B91C1C;">⚠️</div><div class="stat-value">${stats.lowStockItems.length}</div><div class="stat-label">Stok Menipis</div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#DBEAFE;color:#1E40AF;">⬇️</div><div class="stat-value">${STATE.stockIn.length}</div><div class="stat-label">Transaksi Masuk</div></div>
+      <div class="stat-card"><div class="stat-icon" style="background:#FEF3C7;color:#92400E;">⬆️</div><div class="stat-value">${STATE.stockOut.length}</div><div class="stat-label">Transaksi Keluar</div></div>
+    </div>
+
+    <div class="dashboard-bottom-grid">
+      <div class="card">
+        <div class="card-header"><h3>Export Laporan PDF</h3></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px;">
+          <button class="btn btn-danger" id="exportPdfStock" style="justify-content:flex-start;">📄 Export PDF Stok Barang</button>
+          <button class="btn btn-danger" id="exportPdfLowStock" style="justify-content:flex-start;">📄 Export PDF Stok Menipis</button>
+          <button class="btn btn-outline" disabled style="justify-content:flex-start;color:var(--gray-500);">📄 Export PDF Barang Masuk (gunakan pola yang sama)</button>
+          <button class="btn btn-outline" disabled style="justify-content:flex-start;color:var(--gray-500);">📄 Export PDF Barang Keluar (gunakan pola yang sama)</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Export Laporan Excel</h3></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px;">
+          <button class="btn btn-success" id="exportExcelProducts" style="justify-content:flex-start;">📊 Export Excel Barang</button>
+          <button class="btn btn-success" id="exportExcelStockIn" style="justify-content:flex-start;">📊 Export Excel Barang Masuk</button>
+          <button class="btn btn-outline" disabled style="justify-content:flex-start;color:var(--gray-500);">📊 Export Excel Barang Keluar (gunakan pola yang sama)</button>
+          <button class="btn btn-outline" disabled style="justify-content:flex-start;color:var(--gray-500);">📊 Export Laporan Bulanan (gunakan pola yang sama)</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---- PDF Helpers ---- */
+function pdfHeader(doc, title){
+  doc.setFillColor(30,58,138);
+  doc.rect(0,0,210,28,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(14);
+  doc.text('TB. BANGUN GRIYA', 14, 13);
+  doc.setFontSize(9);
+  doc.text('INVENTORY SYSTEM', 14, 19);
+  doc.setFontSize(11);
+  doc.text(title, 196, 13, { align:'right' });
+  doc.setFontSize(8.5);
+  doc.text('Tanggal cetak: ' + formatDateTime(new Date()), 196, 19, { align:'right' });
+  doc.text('Dicetak oleh: ' + (STATE.profile ? STATE.profile.name + ' (' + ROLE_LABELS[STATE.profile.role] + ')' : '-'), 196, 24, { align:'right' });
+  doc.setTextColor(0,0,0);
+}
+function pdfFooterAllPages(doc){
+  const pageCount = doc.internal.getNumberOfPages();
+  for(let i=1;i<=pageCount;i++){
+    doc.setPage(i);
+    doc.setFontSize(8.5);
+    doc.setTextColor(120,120,120);
+    doc.text(`Halaman ${i} dari ${pageCount}`, 105, 290, { align:'center' });
+  }
+}
+
+document.addEventListener('click', function(e){
+  if(e.target.id === 'exportPdfStock') exportPdfStock();
+  if(e.target.id === 'exportPdfLowStock') exportPdfLowStock();
+  if(e.target.id === 'exportExcelProducts') exportExcelProducts();
+  if(e.target.id === 'exportExcelStockIn') exportExcelStockIn();
+});
+
+function exportPdfStock(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  pdfHeader(doc, 'Laporan Stok Barang');
+  const body = STATE.products.map(p=>[
+    p.code, p.name, categoryName(p.categoryId), p.unit, (p.stock??0).toString(), (p.minimumStock??0).toString(), formatRupiah(p.sellingPrice)
+  ]);
+  doc.autoTable({
+    head:[['Kode','Nama Barang','Kategori','Satuan','Stok','Min. Stok','Harga Jual']],
+    body, startY:34, theme:'grid',
+    headStyles:{ fillColor:[249,115,22], textColor:255, fontSize:9 },
+    bodyStyles:{ fontSize:8.5 },
+    margin:{ left:10, right:10 }
+  });
+  const finalY = doc.lastAutoTable.finalY || 34;
+  doc.setFontSize(9.5);
+  doc.text(`Total Item: ${STATE.products.length}`, 14, finalY+8);
+  pdfFooterAllPages(doc);
+  doc.save(`TB-BANGUN-GRIYA_Laporan-Stok_${new Date().toISOString().slice(0,10)}.pdf`);
+  logActivity('Export PDF', 'Laporan Stok Barang');
+  showToast('Laporan PDF stok berhasil diunduh');
+}
+
+function exportPdfLowStock(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  pdfHeader(doc, 'Laporan Stok Menipis');
+  const lowStock = STATE.products.filter(p => (Number(p.stock)||0) <= (Number(p.minimumStock)||0));
+  const body = lowStock.map(p=>[
+    p.code, p.name, categoryName(p.categoryId), p.unit, (p.stock??0).toString(), (p.minimumStock??0).toString()
+  ]);
+  doc.autoTable({
+    head:[['Kode','Nama Barang','Kategori','Satuan','Stok Saat Ini','Min. Stok']],
+    body, startY:34, theme:'grid',
+    headStyles:{ fillColor:[220,38,38], textColor:255, fontSize:9 },
+    bodyStyles:{ fontSize:8.5 },
+    margin:{ left:10, right:10 }
+  });
+  const finalY = doc.lastAutoTable.finalY || 34;
+  doc.setFontSize(9.5);
+  doc.text(`Total Item Stok Menipis: ${lowStock.length}`, 14, finalY+8);
+  pdfFooterAllPages(doc);
+  doc.save(`TB-BANGUN-GRIYA_Stok-Menipis_${new Date().toISOString().slice(0,10)}.pdf`);
+  logActivity('Export PDF', 'Laporan Stok Menipis');
+  showToast('Laporan PDF stok menipis berhasil diunduh');
+}
+
+/* ---- Excel Helpers ---- */
+function exportExcelProducts(){
+  const data = STATE.products.map(p=>({
+    'Kode Barang': p.code,
+    'Nama Barang': p.name,
+    'Kategori': categoryName(p.categoryId),
+    'Stok': p.stock??0,
+    'Harga Jual': p.sellingPrice??0,
+    'Tanggal Input': formatDate(p.createdAt)
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Barang');
+  XLSX.writeFile(wb, `TB-BANGUN-GRIYA_Inventory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  logActivity('Export Excel', 'Data Barang');
+  showToast('Data barang berhasil diexport ke Excel');
+}
+
+function exportExcelStockIn(){
+  const data = STATE.stockIn.map(s=>{
+    const p = STATE.products.find(p=>p.id===s.productId);
+    return {
+      'Kode Barang': p?p.code:'-',
+      'Nama Barang': p?p.name:'Barang Terhapus',
+      'Kategori': p?categoryName(p.categoryId):'-',
+      'Jumlah Masuk': s.quantity??0,
+      'Supplier': s.supplier||'-',
+      'Tanggal': formatDate(s.date)
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Barang Masuk');
+  XLSX.writeFile(wb, `TB-BANGUN-GRIYA_Inventory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  logActivity('Export Excel', 'Data Barang Masuk');
+  showToast('Data barang masuk berhasil diexport ke Excel');
+}
+
+/* =====================================================================
+   USERS PAGE (Role Management) - Owner only
+====================================================================== */
+function renderUsersPage(){
+  const term = STATE.searchTerms.users.toLowerCase();
+  const all = STATE.users.filter(u => !term || (u.name||'').toLowerCase().includes(term) || (u.email||'').toLowerCase().includes(term));
+
+  const rows = all.map(u=>`
+    <tr>
+      <td><strong>${escapeHtml(u.name)}</strong></td>
+      <td>${escapeHtml(u.email)}</td>
+      <td><span class="role-pill role-${u.role}">${ROLE_LABELS[u.role]||u.role}</span></td>
+      <td>${formatDate(u.createdAt)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" data-edit-user="${u.id}" title="Edit Role">✏️</button>
+          ${u.id !== STATE.profile.uid ? `<button class="icon-btn danger" data-del-user="${u.id}" title="Hapus">🗑️</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('') || `<tr><td colspan="5"><div class="empty-state"><div class="ei">👥</div>Belum ada pengguna</div></td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Manajemen Pengguna</h2><p>Kelola akun dan hak akses (role) pengguna sistem</p></div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding-bottom:0;">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-input"><span>🔍</span><input type="text" id="userSearchInput" placeholder="Cari nama / email..." value="${escapeHtml(STATE.searchTerms.users)}"></div>
+          </div>
+          <div class="toolbar-right">
+            <button class="btn btn-orange" id="addUserBtn">+ Tambah Pengguna</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Dibuat</th><th>Aksi</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px;">
+      <div class="card-header"><h3>Keterangan Hak Akses Role</h3></div>
+      <div class="card-body" style="font-size:13px;color:var(--gray-700);line-height:1.8;">
+        <strong>Owner</strong> — Akses penuh: kelola user, lihat laporan, export data, backup &amp; restore.<br>
+        <strong>Admin</strong> — Kelola kategori, barang, barang masuk/keluar, lihat laporan.<br>
+        <strong>Kasir</strong> — Input barang keluar dan melihat stok. Tidak bisa menghapus data.
+      </div>
+    </div>
+  `;
+}
+
+function openAddUserModal(){
+  openModal({
+    title: 'Tambah Pengguna Baru',
+    bodyHtml: `
+      <div class="field-group"><label>Nama Lengkap</label><input type="text" id="nuName" placeholder="Nama pengguna"></div>
+      <div class="field-group"><label>Email</label><input type="email" id="nuEmail" placeholder="email@bangungriya.com"></div>
+      <div class="field-group"><label>Password</label><input type="password" id="nuPassword" placeholder="Minimal 6 karakter"></div>
+      <div class="field-group">
+        <label>Role</label>
+        <select id="nuRole">
+          <option value="kasir">Kasir</option>
+          <option value="admin">Admin</option>
+          <option value="owner">Owner</option>
+        </select>
+      </div>
+      <div class="field-hint" style="margin-top:-4px;">Catatan: membuat akun baru memerlukan Firebase Authentication aktif untuk Email/Password. Jika operasi ini menyebabkan sesi Anda ikut berganti, silakan login ulang.</div>
+    `,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label:'Buat Pengguna', class:'btn-orange', onClick: async ()=>{
+          const name = document.getElementById('nuName').value.trim();
+          const email = document.getElementById('nuEmail').value.trim();
+          const password = document.getElementById('nuPassword').value;
+          const role = document.getElementById('nuRole').value;
+          if(!name || !email || password.length < 6){ showToast('Lengkapi data dengan benar (password min. 6 karakter)', 'error'); return; }
+          try{
+            // Membuat user baru via secondary auth instance agar sesi Owner tidak tergantikan.
+            const secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary' + Date.now());
+            const secondaryAuth = secondaryApp.auth();
+            const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+            await db.collection('users').doc(cred.user.uid).set({
+              name, email, role, createdAt: FieldValue.serverTimestamp()
+            });
+            await secondaryAuth.signOut();
+            await secondaryApp.delete();
+            await logActivity('Menambah pengguna', `${name} (${role})`);
+            showToast('Pengguna baru berhasil dibuat');
+            closeModal();
+          }catch(err){
+            console.error(err);
+            let msg = 'Gagal membuat pengguna';
+            if(err.code === 'auth/email-already-in-use') msg = 'Email sudah terdaftar';
+            if(err.code === 'auth/weak-password') msg = 'Password terlalu lemah';
+            showToast(msg, 'error');
+          }
+        }
+      }
+    ]
+  });
+}
+
+function openEditUserModal(userId){
+  const u = STATE.users.find(u=>u.id===userId);
+  if(!u) return;
+  openModal({
+    title: 'Edit Role Pengguna',
+    bodyHtml: `
+      <div class="field-group"><label>Nama</label><input type="text" id="euName" value="${escapeHtml(u.name)}"></div>
+      <div class="field-group"><label>Email</label><input type="email" value="${escapeHtml(u.email)}" disabled style="background:var(--gray-200);color:var(--gray-500);"></div>
+      <div class="field-group">
+        <label>Role</label>
+        <select id="euRole">
+          <option value="kasir" ${u.role==='kasir'?'selected':''}>Kasir</option>
+          <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+          <option value="owner" ${u.role==='owner'?'selected':''}>Owner</option>
+        </select>
+      </div>
+    `,
+    footButtons: [
+      { label:'Batal', class:'btn-outline', onClick: closeModal },
+      { label:'Simpan', class:'btn-orange', onClick: async ()=>{
+          const name = document.getElementById('euName').value.trim();
+          const role = document.getElementById('euRole').value;
+          try{
+            await db.collection('users').doc(userId).update({ name, role });
+            await logActivity('Mengedit pengguna', `${name} -> ${role}`);
+            showToast('Data pengguna berhasil diperbarui');
+            closeModal();
+          }catch(err){ console.error(err); showToast('Gagal memperbarui pengguna', 'error'); }
+        }
+      }
+    ]
+  });
+}
+
+async function deleteUserDoc(userId){
+  const u = STATE.users.find(u=>u.id===userId);
+  if(!u) return;
+  confirmAction(`Hapus akses pengguna "${u.name}"? Akun Auth tidak terhapus otomatis (hapus manual di Firebase Console jika perlu).`, async ()=>{
+    try{
+      await db.collection('users').doc(userId).delete();
+      await logActivity('Menghapus pengguna', u.name);
+      showToast('Akses pengguna berhasil dihapus');
+    }catch(err){ console.error(err); showToast('Gagal menghapus pengguna', 'error'); }
+  });
+}
+
+/* =====================================================================
+   BACKUP & RESTORE PAGE
+====================================================================== */
+function renderBackupPage(){
+  const latest = STATE.backups[0];
+  const historyHtml = STATE.backups.map(b=>`
+    <div class="backup-history-item">
+      <div class="bh-meta">
+        <strong>${formatDateTime(b.backupDate)}</strong>
+        <span>${b.totalProducts??0} barang · ${b.totalCategories??0} kategori · ${b.totalTransactions??0} transaksi</span>
+      </div>
+      <div class="row-actions">
+        <button class="icon-btn" data-download-backup="${b.id}" title="Download JSON">⬇️</button>
+        ${can('backup','restore') ? `<button class="icon-btn" data-restore-backup="${b.id}" title="Restore">♻️</button>` : ''}
+      </div>
+    </div>
+  `).join('') || `<div class="empty-state"><div class="ei">💾</div>Belum ada riwayat backup</div>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Backup &amp; Restore</h2><p>Kelola cadangan data sistem inventory</p></div>
+    </div>
+    <div class="dashboard-bottom-grid">
+      <div class="card">
+        <div class="card-header"><h3>Riwayat Backup</h3></div>
+        <div class="card-body">${historyHtml}</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Backup Terakhir</h3></div>
+        <div class="card-body">
+          ${latest ? `
+            <p style="margin:0 0 14px;font-size:13px;color:var(--gray-700);">${formatDateTime(latest.backupDate)}</p>
+            <div style="display:flex;gap:18px;margin-bottom:16px;">
+              <div><strong style="font-size:18px;">${latest.totalProducts??0}</strong><div style="font-size:11.5px;color:var(--gray-500);">Barang</div></div>
+              <div><strong style="font-size:18px;">${latest.totalCategories??0}</strong><div style="font-size:11.5px;color:var(--gray-500);">Kategori</div></div>
+              <div><strong style="font-size:18px;">${latest.totalTransactions??0}</strong><div style="font-size:11.5px;color:var(--gray-500);">Transaksi</div></div>
+            </div>
+          ` : `<p style="color:var(--gray-500);font-size:13px;">Belum ada backup tersimpan.</p>`}
+          ${can('backup','manual') ? `<button class="btn btn-navy" id="manualBackupBtn" style="width:100%;">💾 Backup Sekarang</button>` : ''}
+          <p class="field-hint" style="margin-top:10px;">Disarankan melakukan backup otomatis harian. Atur scheduler (misal Cloud Functions/cron) terpisah dari aplikasi client untuk otomatisasi penuh.</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function performManualBackup(){
+  setLoading(true);
+  try{
+    const backupData = {
+      categories: STATE.categories,
+      products: STATE.products,
+      stockIn: STATE.stockIn,
+      stockOut: STATE.stockOut
+    };
+    await db.collection('backups').add({
+      backupDate: FieldValue.serverTimestamp(),
+      totalProducts: STATE.products.length,
+      totalCategories: STATE.categories.length,
+      totalTransactions: STATE.stockIn.length + STATE.stockOut.length,
+      backupData: JSON.parse(JSON.stringify(backupData))
+    });
+    await logActivity('Backup data', 'Backup manual');
+    showToast('Backup berhasil dibuat');
+  }catch(err){ console.error(err); showToast('Gagal membuat backup', 'error'); }
+  setLoading(false);
+}
+
+function downloadBackupJson(backupId){
+  const b = STATE.backups.find(b=>b.id===backupId);
+  if(!b) return;
+  const blob = new Blob([JSON.stringify(b.backupData||{}, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `TB-BANGUN-GRIYA_Backup_${formatDate(b.backupDate).replace(/\s/g,'-')}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logActivity('Download backup', formatDate(b.backupDate));
+}
+
+function restoreFromBackup(backupId){
+  const b = STATE.backups.find(b=>b.id===backupId);
+  if(!b || !b.backupData) return;
+  confirmAction('Restore data dari backup ini? Data kategori dan barang SAAT INI akan ditimpa dengan data dari backup. Tindakan ini berisiko tinggi.', async ()=>{
+    setLoading(true);
+    try{
+      const batch = db.batch();
+      (b.backupData.categories||[]).forEach(c=>{
+        const ref = db.collection('categories').doc(c.id);
+        const { id, ...rest } = c;
+        batch.set(ref, rest);
+      });
+      (b.backupData.products||[]).forEach(p=>{
+        const ref = db.collection('products').doc(p.id);
+        const { id, ...rest } = p;
+        batch.set(ref, rest);
+      });
+      await batch.commit();
+      await logActivity('Restore data', formatDate(b.backupDate));
+      showToast('Data berhasil direstore dari backup');
+    }catch(err){ console.error(err); showToast('Gagal melakukan restore', 'error'); }
+    setLoading(false);
+  });
+}
+
+/* =====================================================================
+   SETTINGS PAGE
+====================================================================== */
+function renderSettingsPage(){
+  return `
+    <div class="page-header">
+      <div><h2>Pengaturan</h2><p>Informasi sistem dan preferensi aplikasi</p></div>
+    </div>
+    <div class="settings-tabs">
+      <div class="settings-tab active" data-settings-tab="profile">Profil Saya</div>
+      <div class="settings-tab" data-settings-tab="store">Info Toko</div>
+      <div class="settings-tab" data-settings-tab="about">Tentang Sistem</div>
+    </div>
+    <div class="settings-panel active" id="panel-profile">
+      <div class="card"><div class="card-body">
+        <div class="form-grid-2">
+          <div class="field-group"><label>Nama</label><input type="text" value="${escapeHtml(STATE.profile.name)}" disabled style="background:var(--gray-100);"></div>
+          <div class="field-group"><label>Email</label><input type="text" value="${escapeHtml(STATE.profile.email)}" disabled style="background:var(--gray-100);"></div>
+          <div class="field-group"><label>Role</label><input type="text" value="${ROLE_LABELS[STATE.profile.role]}" disabled style="background:var(--gray-100);"></div>
+        </div>
+        <p class="field-hint">Untuk mengubah nama atau role, hubungi Owner melalui menu Pengguna.</p>
+      </div></div>
+    </div>
+    <div class="settings-panel" id="panel-store">
+      <div class="card"><div class="card-body">
+        <div class="form-grid-2">
+          <div class="field-group"><label>Nama Toko</label><input type="text" value="TB. Bangun Griya" disabled style="background:var(--gray-100);"></div>
+          <div class="field-group"><label>Tema Warna</label><input type="text" value="Navy (#1E3A8A) & Orange (#F97316)" disabled style="background:var(--gray-100);"></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="settings-panel" id="panel-about">
+      <div class="card"><div class="card-body" style="font-size:13px;color:var(--gray-700);line-height:1.8;">
+        <strong>TB. Bangun Griya — Inventory System</strong><br>
+        Dibangun dengan HTML5, CSS3, Vanilla JavaScript, dan Firebase (Authentication + Firestore + Hosting).<br>
+        Versi: 1.0.0
+      </div></div>
+    </div>
+  `;
+}
+
+/* =====================================================================
+   AUDIT LOG PAGE
+====================================================================== */
+function renderAuditLogPage(){
+  const page = STATE.pagination.logs;
+  const totalPages = Math.max(1, Math.ceil(STATE.activityLogs.length / STATE.pageSize));
+  const pageItems = STATE.activityLogs.slice((page-1)*STATE.pageSize, page*STATE.pageSize);
+
+  const rows = pageItems.map(a=>`
+    <tr>
+      <td>${formatDateTime(a.timestamp)}</td>
+      <td>${escapeHtml(a.userName)}</td>
+      <td><span class="role-pill role-${a.role}">${ROLE_LABELS[a.role]||a.role}</span></td>
+      <td>${escapeHtml(a.action)}</td>
+      <td>${escapeHtml(a.target||'-')}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="5"><div class="empty-state"><div class="ei">📋</div>Belum ada aktivitas tercatat</div></td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h2>Audit Log</h2><p>Riwayat seluruh aktivitas pengguna dalam sistem</p></div>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Waktu</th><th>User</th><th>Role</th><th>Aktivitas</th><th>Detail</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${renderPaginationBar('logs', STATE.activityLogs.length, totalPages, page)}
+    </div>
+  `;
+}
+
+/* =====================================================================
+   PAGE EVENT LISTENER ATTACHER
+   Called every time a page is (re)rendered to wire up buttons/inputs.
+====================================================================== */
+function attachPageEventListeners(pageId){
+  const container = document.getElementById('pageContainer');
+
+  // Generic stat-card / card-link navigation
+  container.querySelectorAll('[data-nav-link]').forEach(el=>{
+    el.addEventListener('click', ()=> navigateTo(el.dataset.navLink));
+  });
+
+  // Generic pagination
+  container.querySelectorAll('[data-page-go]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(el.disabled) return;
+      const [key, pageNum] = el.dataset.pageGo.split(':');
+      const num = parseInt(pageNum,10);
+      if(isNaN(num) || num < 1) return;
+      STATE.pagination[key] = num;
+      renderPage(STATE.currentPage, false);
+    });
+  });
+
+  if(pageId === 'categories'){
+    const addBtn = document.getElementById('addCategoryBtn');
+    if(addBtn) addBtn.addEventListener('click', ()=>openCategoryModal(null));
+    container.querySelectorAll('[data-edit-cat]').forEach(el=>{
+      el.addEventListener('click', ()=> openCategoryModal(STATE.categories.find(c=>c.id===el.dataset.editCat)));
+    });
+    container.querySelectorAll('[data-del-cat]').forEach(el=>{
+      el.addEventListener('click', ()=> deleteCategory(el.dataset.delCat));
+    });
+    const searchInput = document.getElementById('catSearchInput');
+    if(searchInput) searchInput.addEventListener('input', (e)=>{
+      STATE.searchTerms.categories = e.target.value;
+      STATE.pagination.categories = 1;
+      renderPage('categories', false);
+      document.getElementById('catSearchInput').focus();
+    });
+  }
+
+  if(pageId === 'products'){
+    const addBtn = document.getElementById('addProductBtn');
+    if(addBtn) addBtn.addEventListener('click', ()=>openProductModal(null));
+    container.querySelectorAll('[data-edit-prod]').forEach(el=>{
+      el.addEventListener('click', ()=> openProductModal(STATE.products.find(p=>p.id===el.dataset.editProd)));
+    });
+    container.querySelectorAll('[data-del-prod]').forEach(el=>{
+      el.addEventListener('click', ()=> deleteProduct(el.dataset.delProd));
+    });
+    container.querySelectorAll('[data-view-prod]').forEach(el=>{
+      el.addEventListener('click', ()=> viewProductDetail(el.dataset.viewProd));
+    });
+    const searchInput = document.getElementById('prodSearchInput');
+    if(searchInput) searchInput.addEventListener('input', (e)=>{
+      STATE.searchTerms.products = e.target.value;
+      STATE.pagination.products = 1;
+      renderPage('products', false);
+      document.getElementById('prodSearchInput').focus();
+    });
+    const catFilter = document.getElementById('prodCategoryFilter');
+    if(catFilter) catFilter.addEventListener('change', (e)=>{
+      STATE.filters.productsCategory = e.target.value;
+      STATE.pagination.products = 1;
+      renderPage('products', false);
+    });
+  }
+
+  if(pageId === 'stockIn'){
+    const addBtn = document.getElementById('addStockInBtn');
+    if(addBtn) addBtn.addEventListener('click', openStockInModal);
+    container.querySelectorAll('[data-del-stockin]').forEach(el=>{
+      el.addEventListener('click', ()=> deleteStockIn(el.dataset.delStockin));
+    });
+    const searchInput = document.getElementById('stockInSearchInput');
+    if(searchInput) searchInput.addEventListener('input', (e)=>{
+      STATE.searchTerms.stockIn = e.target.value;
+      STATE.pagination.stockIn = 1;
+      renderPage('stockIn', false);
+      document.getElementById('stockInSearchInput').focus();
+    });
+  }
+
+  if(pageId === 'stockOut'){
+    const addBtn = document.getElementById('addStockOutBtn');
+    if(addBtn) addBtn.addEventListener('click', openStockOutModal);
+    container.querySelectorAll('[data-del-stockout]').forEach(el=>{
+      el.addEventListener('click', ()=> deleteStockOut(el.dataset.delStockout));
+    });
+    const searchInput = document.getElementById('stockOutSearchInput');
+    if(searchInput) searchInput.addEventListener('input', (e)=>{
+      STATE.searchTerms.stockOut = e.target.value;
+      STATE.pagination.stockOut = 1;
+      renderPage('stockOut', false);
+      document.getElementById('stockOutSearchInput').focus();
+    });
+  }
+
+  if(pageId === 'users'){
+    const addBtn = document.getElementById('addUserBtn');
+    if(addBtn) addBtn.addEventListener('click', openAddUserModal);
+    container.querySelectorAll('[data-edit-user]').forEach(el=>{
+      el.addEventListener('click', ()=> openEditUserModal(el.dataset.editUser));
+    });
+    container.querySelectorAll('[data-del-user]').forEach(el=>{
+      el.addEventListener('click', ()=> deleteUserDoc(el.dataset.delUser));
+    });
+    const searchInput = document.getElementById('userSearchInput');
+    if(searchInput) searchInput.addEventListener('input', (e)=>{
+      STATE.searchTerms.users = e.target.value;
+      renderPage('users', false);
+      document.getElementById('userSearchInput').focus();
+    });
+  }
+
+  if(pageId === 'backup'){
+    const manualBtn = document.getElementById('manualBackupBtn');
+    if(manualBtn) manualBtn.addEventListener('click', performManualBackup);
+    container.querySelectorAll('[data-download-backup]').forEach(el=>{
+      el.addEventListener('click', ()=> downloadBackupJson(el.dataset.downloadBackup));
+    });
+    container.querySelectorAll('[data-restore-backup]').forEach(el=>{
+      el.addEventListener('click', ()=> restoreFromBackup(el.dataset.restoreBackup));
+    });
+  }
+
+  if(pageId === 'settings'){
+    container.querySelectorAll('[data-settings-tab]').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        container.querySelectorAll('[data-settings-tab]').forEach(t=>t.classList.remove('active'));
+        container.querySelectorAll('.settings-panel').forEach(p=>p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.settingsTab).classList.add('active');
+      });
+    });
+  }
+}
+
+/* =====================================================================
+   GLOBAL SEARCH (topbar) - quick router shortcut
+====================================================================== */
+document.getElementById('globalSearch').addEventListener('input', function(e){
+  const val = e.target.value;
+  if(['products','categories','stockIn','stockOut'].includes(STATE.currentPage)){
+    STATE.searchTerms[STATE.currentPage] = val;
+    renderPage(STATE.currentPage, false);
+  }
+});
+document.getElementById('globalSearch').addEventListener('keydown', function(e){
+  if(e.key === 'Enter' && can('products','view')){
+    STATE.searchTerms.products = e.target.value;
+    navigateTo('products');
+  }
+});
+
+/* =====================================================================
+   NOTIFICATION BELL (shows low-stock count)
+====================================================================== */
+document.getElementById('bellIcon').addEventListener('click', ()=>{
+  if(can('products','view')) navigateTo('products');
+});
+function refreshBellBadge(){
+  const lowCount = STATE.products.filter(p => (Number(p.stock)||0) <= (Number(p.minimumStock)||0)).length;
+  const badge = document.getElementById('bellBadge');
+  if(lowCount > 0){
+    badge.textContent = lowCount > 99 ? '99+' : lowCount;
+    badge.classList.remove('hidden');
+  }else{
+    badge.classList.add('hidden');
+  }
+}
+// Hook badge refresh into the same data flow as page re-renders
+const _originalRerender = rerenderCurrentPage;
+rerenderCurrentPage = function(){
+  _originalRerender();
+  refreshBellBadge();
+};
+
+/* =====================================================================
+   AUTOMATIC DAILY BACKUP CHECK
+   On load (after login), checks if a backup already exists for today's
+   date. If not, and the current user is Owner, creates one automatically.
+   This runs client-side, so it only triggers when an Owner is logged in
+   on that day. For guaranteed automation regardless of login activity,
+   pair this with a scheduled Cloud Function on the backend.
+====================================================================== */
+async function checkAndRunAutoBackup(){
+  if(!STATE.profile || STATE.profile.role !== 'owner') return;
+  try{
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const snap = await db.collection('backups')
+      .where('backupDate', '>=', Timestamp.fromDate(todayStart))
+      .limit(1).get();
+    if(snap.empty){
+      await db.collection('backups').add({
+        backupDate: FieldValue.serverTimestamp(),
+        totalProducts: STATE.products.length,
+        totalCategories: STATE.categories.length,
+        totalTransactions: STATE.stockIn.length + STATE.stockOut.length,
+        backupData: JSON.parse(JSON.stringify({
+          categories: STATE.categories, products: STATE.products,
+          stockIn: STATE.stockIn, stockOut: STATE.stockOut
+        }))
+      });
+      await logActivity('Backup data', 'Backup otomatis harian');
+    }
+  }catch(e){ console.warn('Auto-backup check gagal', e); }
+}
+</script>
+
+</body>
+</html>
